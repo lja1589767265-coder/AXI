@@ -8,8 +8,11 @@
 | --- | --- | --- |
 | [ARM IHI 0022H AMBA AXI and ACE Protocol Specification 结构目录](ARM_IHI_0022H_AMBA_AXI_and_ACE_Protocol_Specification结构目录.md) | 介绍 IHI 0022H 的 Preface、Part A～G 及推荐学习顺序 | 已完成 |
 | [A1：AXI 入门](ARM_IHI_0022H_AMBA_AXI_and_ACE_Protocol_Specification_A1.md) | 覆盖 A1 全章：五通道、读写实例、事务层次、互连、寄存器切片与自测，配图讲解 | 已完成 |
-| [README 写作规范](README写作规范.md) | 统一后续章节的内容结构、初学者表达、配图、引用和公众号发布要求 | 已完成 |
+| [README 写作规范](README写作规范.md) | 以新版 A3 成稿为基准，统一文章结构、时序图模板、技术核对与发布验收方法 | 已完成（A3 基准版） |
 | [A2：AXI 接口信号导读](ARM_IHI_0022H_AMBA_AXI_and_ACE_Protocol_Specification_A2.md) | 按原文六节介绍全局信号和五通道，结合时序图解释读写及握手 | 已完成 |
+| [A3：AXI 单接口要求](ARM_IHI_0022H_AMBA_AXI_and_ACE_Protocol_Specification_A3.md) | 基于新笔记整理：时钟复位、握手依赖、突发地址与字节通道、Regular 属性和响应；含 13 张重绘图及 10 道自测题 | 已完成（仓库稿；Regular 原文歧义已标注） |
+| [A5：事务 ID](ARM_IHI_0022H_AMBA_AXI_and_ACE_Protocol_Specification_A5.md) | 覆盖 A5 全章：未完成事务、读响应顺序、写数据顺序、互连 ID 扩展，含 3 张教学图和 10 道自测题 | 已完成（仓库稿） |
+| [A4：事务属性导读](ARM_IHI_0022H_AMBA_AXI_and_ACE_Protocol_Specification_A4.md) | 覆盖 A4 全章：AxCACHE、内存类型、缓冲、AxPROT 与 Device 写完成保证，含三幅教学图及自测 | 已完成 |
 
 ## 后续计划
 
