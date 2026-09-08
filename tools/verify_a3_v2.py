@@ -26,7 +26,7 @@ for block in re.findall(r'<details>(.*?)</details>',body,re.S):
     assert '\n\n  <span ' in block
     assert block.endswith('\n\n')
 refs=re.findall(r'!\[[^\]]*\]\(([^)]+)\)',body)
-assert len(refs)==len(set(refs))==13
+assert len(refs)==len(set(refs))==18
 for ref in refs:
     assert '/v2-' in ref
     p=ROOT/ref

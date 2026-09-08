@@ -66,7 +66,7 @@ def timing(name,title,rows,events,notes,rule,assumption,reset=False):
     n=len(rows[0][1]); left=235; right=1390; step=(right-left-45)/(n-0.5)
     edges=[left+45+i*step for i in range(n)]
     top=235; pitch=86; bottom=top+pitch*(len(rows)+1)
-    fig=Figure(name,title,bottom+385)
+    fig=Figure(name,title,bottom+445)
     fig.text(30,92,1380,55,'时间向右；虚线为采样上升沿；按边沿前取值判断，信号在沿后更新。',32)
     if reset:
         split=edges[1]+18
@@ -110,8 +110,8 @@ def timing(name,title,rows,events,notes,rule,assumption,reset=False):
         color=ORANGE if status=='wait' else GREEN if status=='ok' else BLUE
         fill=PALE_ORANGE if status=='wait' else PALE_GREEN if status=='ok' else PALE_BLUE
         fig.box(30+i*(w+20),bottom+58,w,130,label,fill,color,32,color,True)
-    fig.box(30,bottom+210,1380,72,rule,'#ffffff',BLUE,32,BLUE,True,True)
-    fig.box(30,bottom+300,1380,65,assumption,'#ffffff','#888888',32)
+    fig.box(30,bottom+210,1380,90,rule,'#ffffff',BLUE,32,BLUE,True,True)
+    fig.box(30,bottom+325,1380,75,assumption,'#ffffff','#888888',32)
     fig.save();SCENARIOS.append({'name':name,'rows':rows,'events':events})
 
 
@@ -174,6 +174,59 @@ def main():
         fig.line([(330,y+27),(1110,y+27)] if forward else [(1110,y+27),(330,y+27)],color,arrow=True)
     fig.box(40,690,1360,75,'每条箭头都是一套 VALID / READY 握手；READY 的方向与箭头相反。','#ffffff',BLUE,32,BLUE,True)
     fig.save()
+    timing('v2-14-narrow-timing','Narrow INCR：32-bit 总线上的 1 Byte 连续传输',[
+        ('WVALID',[0,1,1,1,1,1,0],'bit'),('WREADY',[1,1,1,1,1,1,1],'bit'),
+        ('WADDR',['—','0x00','0x01','0x02','0x03','0x04','—'],'bus'),
+        ('WSTRB',['—','0001','0010','0100','1000','0001','—'],'bus'),('WDATA',['—','D0','D1','D2','D3','D4','—'],'bus')],
+        {2:'ok',3:'ok',4:'ok',5:'ok',6:'ok'},
+        [('T2：0x00 / lane 0','ok'),('T3～T5：lane 1、2、3','ok'),('T6：0x04 / lane 回到 0','ok')],
+        '每个采样沿完成 1 Byte；lane 只在总线字边界重新编号，地址不会回退。',
+        '32-bit 总线；AxSIZE=0，AxLEN=4（5 拍），INCR；WREADY 始终为 1。')
+    timing('v2-15-narrow-64bit','Narrow INCR：64-bit 总线上的 4 Byte 传输',[
+        ('WVALID',[0,1,1,1,0],'bit'),('WREADY',[1,1,1,1,1],'bit'),
+        ('WADDR',['—','0x04~0x07','0x08~0x0B','0x0C~0x0F','—'],'bus'),
+        ('WSTRB',['—','11110000','00001111','11110000','—'],'bus'),('WDATA',['—','D0','D1','D2','—'],'bus')],
+        {2:'ok',3:'ok',4:'ok'},
+        [('T2：0x04~0x07\nlane 4~7','ok'),('T3：0x08~0x0B\nlane 0~3','ok'),('T4：0x0C~0x0F\nlane 4~7','ok')],
+        '64-bit 总线有 8 个 lane；每拍 4 Byte，只占连续 4 个 lane，地址跨 8 Byte 总线字时重新编号。',
+        '64-bit 总线；AxSIZE=2；AxLEN=2（3 拍）；INCR；WSTRB 按 [7:0] 书写。')
+    timing('v2-16-byte-invariance','Byte Invariance：端序改变字节排列，不改变 lane',[
+        ('AWVALID',[0,1,0,0,0],'bit'),('AWREADY',[1,1,1,1,1],'bit'),
+        ('AWADDR',['—','Addr','—','—','—'],'bus'),
+        ('WVALID',[0,0,1,0,0],'bit'),('WREADY',[1,1,1,1,1],'bit'),
+        ('WSTRB',['—','—','1111','—','—'],'bus'),
+        ('WDATA (BE)',['—','—','0x0D0C0B0A','—','—'],'bus'),
+        ('WDATA (LE)',['—','—','0x0A0B0C0D','—','—'],'bus')],
+        {2:'ok',3:'ok'},
+        [('T2：AW 握手\n只发送一次 Addr','ok'),('T3：W 握手\n两种端序都用 WSTRB=1111','ok'),
+         ('端序差异\n只在 WDATA 字节排列','info')],
+        '同一接口上，Addr 对应 lane 0，Addr+1 对应 lane 1，Addr+2 对应 lane 2，Addr+3 对应 lane 3；端序只改变各地址上的字节值。',
+        '32-bit 总线；AWADDR=Addr；AxSIZE=2；AxLEN=0（一拍）；WSTRB=1111；比较数值 0x0A0B0C0D 的大端/小端表示。')
+    timing('v2-17-read-response','读响应：每拍 RRESP，必须完成全部 R 握手',[
+        ('ARVALID',[0,1,0,0,0,0,0,0,0],'bit'),('ARREADY',[1,1,1,1,1,1,1,1,1],'bit'),
+        ('ARADDR',['—','0x2000','—','—','—','—','—','—','—'],'bus'),
+        ('RVALID',[0,0,1,1,1,1,1,1,0],'bit'),('RREADY',[1,1,1,0,0,1,1,1,1],'bit'),
+        ('RDATA',['—','—','D0','D1','D1','D1','D2','D3','—'],'bus'),
+        ('RRESP',['—','—','OKAY','SLVERR','SLVERR','SLVERR','OKAY','OKAY','—'],'bus'),
+        ('RLAST',[0,0,0,0,0,0,0,1,0],'bit')],
+        {3:'ok',4:'wait',5:'wait',6:'ok',7:'ok',8:'ok'},
+        [('T2：AR 握手\n发起 4 拍读','ok'),('T3：D0 / OKAY\n第 1 拍握手','ok'),
+         ('T4～T5：D1 / SLVERR\nRREADY=0，保持','wait'),('T6～T8：继续完成\nT8 带 RLAST=1','ok')],
+        'RRESP 随每个 R 数据拍返回；只在 RVALID 与 RREADY 同时为 1 的采样沿计数，错误不会取消剩余数据拍。',
+        'ARLEN=3（4 拍）；RRESP=OKAY、SLVERR、OKAY、OKAY；T4/T5 发生反压；最终完成 4 次 R 握手。')
+    timing('v2-18-write-response','写响应：4 拍 W 数据只对应 1 拍 B 响应',[
+        ('AWVALID',[0,1,0,0,0,0,0,0,0],'bit'),('AWREADY',[1,1,1,1,1,1,1,1,1],'bit'),
+        ('AWADDR',['—','Addr','—','—','—','—','—','—','—'],'bus'),
+        ('WVALID',[0,0,1,1,1,1,0,0,0],'bit'),('WREADY',[1,1,1,1,1,1,1,1,1],'bit'),
+        ('WDATA',['—','—','D0','D1','D2','D3','—','—','—'],'bus'),
+        ('WLAST',[0,0,0,0,0,1,0,0,0],'bit'),
+        ('BVALID',[0,0,0,0,0,0,1,1,0],'bit'),('BREADY',[1,1,1,1,1,1,0,1,1],'bit'),
+        ('BRESP',['—','—','—','—','—','—','SLVERR','SLVERR','—'],'bus')],
+        {2:'ok',3:'ok',4:'ok',5:'ok',6:'ok',7:'wait',8:'ok'},
+        [('T2：AW 握手\n地址接收一次','ok'),('T3～T6：4 次 W 握手\nT6 带 WLAST=1','ok'),
+         ('T7：BVALID=1\nBREADY=0，响应保持','wait'),('T8：B 握手一次\n整笔结果为 SLVERR','ok')],
+        '4 拍写突发只返回 1 份 B 响应；BVALID 表示响应已准备好，BRESP 表示整笔写的结果，B 握手另行计数。',
+        'AWLEN=3（4 拍）；AW 与 W 均已握手后产生 BVALID；BRESP=SLVERR；T7 反压，T8 完成 B 握手。')
     table('v2-10-addresses','突发地址：同样 4 拍，不同地址规则',
         ['类型 / 起点','第 1 拍','第 2 拍','第 3 拍','第 4 拍'],[
             ['FIXED / 0x100C','0x100C','0x100C','0x100C','0x100C'],
@@ -199,7 +252,8 @@ def main():
             ['3 / 0x1008','lane 0、1、2、3','1111：写 4 Byte'],
             ['4 / 0x100C','lane 0、1、2、3','1111：写 4 Byte']],
         [460,460,460],'32-bit 总线；AxSIZE=2，AxLEN=3；最大有效范围为 0x1001～0x100F，共 15 Byte。')
-    (OUT/'v2-timing-samples.json').write_text(json.dumps(SCENARIOS,ensure_ascii=False,indent=2),encoding='utf-8')
+    # Timing samples are kept in memory for verification; do not create an unused
+    # repository artifact beside the formal figures.
 
 
 if __name__=='__main__': main()
