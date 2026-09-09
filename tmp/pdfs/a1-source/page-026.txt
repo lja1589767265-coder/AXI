@@ -1,0 +1,27 @@
+A1 Introduction 
+A1.1 About the AXI protocol
+A1-26 Copyright © 2003-2020 Arm Limited or its affiliates. All rights reserved. ARM IHI 0022H
+Non-Confidential ID040120
+A1.1 About the AXI protocol
+The AMBA AXI protocol supports high-performance, high-frequency system designs for communication between 
+master and slave components.
+The AXI protocol features are:
+• It is suitable for high-bandwi dth and low-latency designs.
+• High-frequency operation is provided,  without using complex bridges.
+• The protocol meets the in terface requirements of a wide range of components.
+• It is suitable for memory controllers with high initial access latency.
+• Flexibility in the implementation of interconnect architectures is provided.
+• It is backward-compatible with AHB and APB interfaces.
+The key features of the AXI protocol are:
+• Separate address/control and data phases.
+• Support for unaligned data tran sfers, using byte strobes.
+• Uses burst-based transactions wi th only the start address issued.
+• Separate read and write data cha nnels, that can provide low-cost Direct Memory Access (DMA).
+• Support for issuing multiple outstanding addresses.
+• Support for out-of-order transaction completion.
+• Permits easy addition of register  stages to provide timing closure.
+The AXI protocol includes:
+• AXI4-Lite, a subset of AXI4 for communication with simpler control register style interfaces within 
+components. See Chapter B1 AMBA AXI4-Lite.
+• AXI5-Lite, a subset of AXI5 for using AXI5 features with simpler control register style interfaces within 
+components. See Chapter C2 AMBA AXI5-Lite.

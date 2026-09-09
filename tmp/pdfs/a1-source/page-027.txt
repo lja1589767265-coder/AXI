@@ -1,0 +1,59 @@
+A1 Introduction 
+A1.2 AXI Architecture
+ARM IHI 0022H Copyright © 2003-2020 Arm Limited or its affiliates. All rights reserved. A1-27
+ID040120 Non-Confidential
+A1.2 AXI Architecture
+The AXI protocol is burst-based and defines five independent transaction channels:
+• Read address, which has si gnal names beginning with AR.
+• Read data, which has signal names beginning with R.
+• Write address, which has signal names beginning with AW.
+• Write data, which has si gnal names beginning with W.
+• Write response, which has signal names beginning with B.
+An address channel carries control information that describes the nature of the data to be transferred. The data is 
+transferred between master and slave using either:
+• A write data channel to transfer data from the master to the slave. In a write transaction, the slave uses the 
+write response channel to signal the completion of the transfer to the master.
+• A read data channel to transfer data from the slave to the master.
+The AXI protocol:
+• Permits address information to be issued  ahead of the actual data transfer.
+• Supports multiple outstanding transactions. 
+• Supports out-of-order completion of transactions.
+Figure A1-1 shows how a write transaction uses the write address, write data, and write response channels.
+Figure A1-1 Channel architecture of writes
+Figure A1-2 shows how a read transaction uses the read address and read data channels. 
+Figure A1-2 Channel architecture of reads
+Master 
+interface
+Slave 
+interface
+Address 
+and control
+Write address channel
+Write
+data
+Write data channel
+Write
+data
+Write
+data
+Write
+data
+Write 
+response
+Write response channel
+Master 
+interface
+Slave 
+interface
+Address 
+and control
+Read address channel
+Read
+data
+Read
+data
+Read
+data
+Read
+data
+Read data channel

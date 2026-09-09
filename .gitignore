@@ -4,3 +4,7 @@
 *.swp
 Thumbs.db
 .DS_Store
+
+# Python 生成缓存
+__pycache__/
+*.py[cod]

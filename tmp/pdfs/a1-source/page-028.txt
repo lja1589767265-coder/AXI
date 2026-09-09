@@ -1,0 +1,43 @@
+A1 Introduction 
+A1.2 AXI Architecture
+A1-28 Copyright © 2003-2020 Arm Limited or its affiliates. All rights reserved. ARM IHI 0022H
+Non-Confidential ID040120
+A1.2.1   Channel definition
+Each of the five independent channels consists of a set of information signals and VA L I D and READY signals that 
+provide a two-way handshake mechanism. See Basic read and write transactions on page A3-41.
+The information source uses the VA L I D signal to show when valid address, data, or control information is available 
+on the channel. The destination uses the READY signal to show when it can accept the information. Both the read 
+data channel and the write data channel also include a LAST signal to indicate the transfer of the final data item in 
+a transaction.
+Read and write address channels
+Read and write transactions each have their own address channel. The appropriate address channel carries all the 
+required address and control information for a transaction.
+Read data channel
+The read data channel carries both the read data and the read response information from the slave to the master, and 
+includes:
+• The data bus, which can be 8, 16, 32 , 64, 128, 256, 512, or 1024 bits wide.
+• A read response signal indicating the comp letion status of the read transaction.
+Write data channel
+The write data channel carries the write data from the master to the slave and includes:
+• The data bus, which can be 8, 16, 32 , 64, 128, 256, 512, or 1024 bits wide.
+• A byte lane strobe signal for ev ery eight data bits, indicating the bytes of the data that are valid.
+Write data channel information is always treated as buffered, so that the master can perform write transactions 
+without slave acknowledgement of previous write transactions.
+Write response channel
+A slave uses the write response channel to respond to write transactions. All write transactions require completion 
+signaling on the write response channel.
+As Figure A1-1 on page A1-27 shows, completion is signaled only for a complete transaction, not for each data 
+transfer in a transaction.
+A1.2.2   Interface and interconnect
+A typical system consists of several master and slave devices that are connected together through some form of 
+interconnect, as Figure A1-3 shows.
+Figure A1-3 Interface and interconnect
+The AXI protocol provides a single interface definition, for the interfaces between:
+• A master and the interconnect
+• A slave and the interconnect
+• A master and a slave
+Interconnect
+Slave 1 Slave 2 Slave 3 Slave 4
+Master 1 Master 2 Master 3
+Interface
+Interface

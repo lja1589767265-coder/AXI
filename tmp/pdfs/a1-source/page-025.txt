@@ -1,0 +1,8 @@
+ARM IHI 0022H Copyright © 2003-2020 Arm Limited or its affiliates. All rights reserved. A1-25
+ID040120 Non-Confidential
+Chapter A1 
+Introduction
+This chapter introduces the architecture of the AXI protocol and the terminology that is used in this specification:
+• About the AXI protocol on page A1-26
+• AXI Architecture on page A1-27
+• Terminology on page A1-30

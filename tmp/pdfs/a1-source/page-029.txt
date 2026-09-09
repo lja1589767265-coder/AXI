@@ -1,0 +1,25 @@
+A1 Introduction 
+A1.2 AXI Architecture
+ARM IHI 0022H Copyright © 2003-2020 Arm Limited or its affiliates. All rights reserved. A1-29
+ID040120 Non-Confidential
+This interface definition supports many different interconnect implementations.
+Note
+ An interconnect between devices is equivalent to another device with symmetrical master and slave ports that the 
+real master and slave devices can be connected.
+Typical system topologies
+Most systems use one of three interconnect topologies:
+• Shared address and data buses
+• Shared address buses and multiple data buses
+• Multilayer, with multipl e address and data buses
+In most systems, the address channel bandwidth requirement is significantly less than the data channel bandwidth 
+requirement. Such systems can achieve a good balance between system performance and interconnect complexity 
+by using a shared address bus with multiple data buses to enable parallel data transfers.
+A1.2.3   Register slices
+Each AXI channel transfers information in only one direction, and the architecture does not require any fixed 
+relationship between the channels. These qualities mean that a register slice can be inserted at almost any point in 
+any channel, at the cost of an additional cycle of latency.
+Note
+ These qualities make the following possible:
+• Trade-off between cycles of latenc y and maximum frequency of operation.
+• Direct, fast connection between a pr ocessor and high-performance memory, but to use simple register slices 
+to isolate a longer path to less performance critical peripherals.

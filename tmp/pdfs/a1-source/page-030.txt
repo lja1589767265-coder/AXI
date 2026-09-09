@@ -1,0 +1,25 @@
+A1 Introduction 
+A1.3 Terminology
+A1-30 Copyright © 2003-2020 Arm Limited or its affiliates. All rights reserved. ARM IHI 0022H
+Non-Confidential ID040120
+A1.3 Terminology
+This section summarizes terms that are used in this specification, and are defined in the Glossary, or elsewhere. 
+Where appropriate, terms that are listed in this section link to the corresponding glossary definition.
+A1.3.1   AXI components and topology
+The following terms describe AXI components:
+• Component
+• Master component
+• Slave component, which includes Memory slave components and Peripheral slave components
+• Interconnect component
+For a particular AXI transaction, Upstream and Downstream refer to the relative positions of AXI components 
+within the AXI topology.
+A1.3.2   AXI transactio ns, and memory types
+When an AXI master initiates an AXI operation, targeting an AXI slave:
+• The complete set of required operations on the AXI bus form the AXI Transaction
+• Any required payload data is  transferred as an AXI Burst
+• A burst can comprise multiple data transfers, or AXI Beats
+A1.3.3   Caches and cache operation
+This specification does not define standard cache terminology, that is defined in any reference work on caching. 
+However, the glossary entries for Cache and Cache line clarify how these terms are used in this document.
+A1.3.4   Temporal description
+The AXI specification uses the term in a timely manner.
