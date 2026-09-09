@@ -1,434 +1,403 @@
-# A1：AXI 入门——先看懂一次读写，再理解系统架构
+![alt text](image.png)# A1：简介 / Introduction
 
-> 阅读对象：第一次学习 AXI、具备基本数字电路概念的读者。
+> <span style="color:#D9822B;">译文性质：Arm 规范的非官方中英双语对照翻译。</span>
 >
-> 依据：Arm IHI 0022H，Chapter A1 Introduction，原文页码 A1-25～A1-30（本项目 PDF 第 25～30 页）。本文覆盖 A1 全部小节的知识点，用中文重新组织讲解，不是逐字翻译，也不是整份 500 页规范的摘要。
+> <span style="color:#D9822B;">原始文档：Arm IHI 0022H《AMBA AXI and ACE Protocol Specification》。</span>
 >
-> 阅读方式：先顺序读正文，再用文末的原文对照表查漏。文中的结构图均为教学重绘。
+> <span style="color:#D9822B;">版本：Issue H，ID040120。</span>
+>
+> <span style="color:#D9822B;">范围：Chapter A1，原文章节页码 A1-25～A1-30。</span>
+>
+> <span style="color:#D9822B;">说明：中文与对应英文原文按原文顺序完整保留；省略每页重复的页眉、页脚、版权行和物理页码。</span>
+
+本章介绍 AXI 协议的架构（architecture），以及本规范（specification）中使用的术语（terminology）：
+
+- 关于 AXI 协议，见第 A1-26 页。
+- AXI 架构，见第 A1-27 页。
+- 术语，见第 A1-30 页。
+
+> **原文（English）**
+>
+> This chapter introduces the architecture of the AXI protocol and the terminology that is used in this specification:
+>
+> - About the AXI protocol on page A1-26
+> - AXI Architecture on page A1-27
+> - Terminology on page A1-30
+
+## A1.1 关于 AXI 协议 / About the AXI protocol
+
+AMBA AXI 协议支持主设备组件（master component）与从设备组件（slave component）之间通信的高性能、高频率系统设计。
+
+> **原文（English）**
+>
+> The AMBA AXI protocol supports high-performance, high-frequency system designs for communication between master and slave components.
+
+AXI 协议具有以下特点：
+
+- 适用于高带宽、低延迟设计。
+- 无需使用复杂的桥接器即可实现高频率运行。
+- 协议满足各种组件的接口要求。
+- 适用于初始访问延迟较高的内存控制器。
+- 为互连架构（interconnect architecture）的实现提供灵活性。
+- 与 AHB 和 APB 接口向后兼容。
+
+> **原文（English）**
+>
+> The AXI protocol features are:
+>
+> - It is suitable for high-bandwidth and low-latency designs.
+> - High-frequency operation is provided, without using complex bridges.
+> - The protocol meets the interface requirements of a wide range of components.
+> - It is suitable for memory controllers with high initial access latency.
+> - Flexibility in the implementation of interconnect architectures is provided.
+> - It is backward-compatible with AHB and APB interfaces.
+
+AXI 协议的主要特性包括：
+
+- 地址/控制阶段与数据阶段分离。
+- 使用字节选通信号支持非对齐数据传输。
+- 使用基于突发的事务，仅发出起始地址。
+- 读数据通道和写数据通道相互独立，可以提供低成本的直接存储器访问（DMA）。
+- 支持发出多个尚未完成的地址请求（outstanding addresses）。
+- 支持事务乱序完成（out-of-order transaction completion）。
+- 允许轻松添加寄存器级（register stages），以实现时序收敛（timing closure）。
+
+> **原文（English）**
+>
+> The key features of the AXI protocol are:
+>
+> - Separate address/control and data phases.
+> - Support for unaligned data transfers, using byte strobes.
+> - Uses burst-based transactions with only the start address issued.
+> - Separate read and write data channels, that can provide low-cost Direct Memory Access (DMA).
+> - Support for issuing multiple outstanding addresses.
+> - Support for out-of-order transaction completion.
+> - Permits easy addition of register stages to provide timing closure.
+
+AXI 协议包括：
+
+- AXI4-Lite，它是 AXI4 的一个子集，用于与组件内部较简单的控制寄存器式接口进行通信。参见第 B1 章“AMBA AXI4-Lite”。
+- AXI5-Lite，它是 AXI5 的一个子集，用于在组件内部较简单的控制寄存器式接口中使用 AXI5 特性。参见第 C2 章“AMBA AXI5-Lite”。
 
-## 阅读路线
+> **原文（English）**
+>
+> The AXI protocol includes:
+>
+> - AXI4-Lite, a subset of AXI4 for communication with simpler control register style interfaces within components. See Chapter B1 AMBA AXI4-Lite.
+> - AXI5-Lite, a subset of AXI5 for using AXI5 features with simpler control register style interfaces within components. See Chapter C2 AMBA AXI5-Lite.
 
-1. AHB 已经能完成读写，为什么还需要 AXI
-2. 谁发起访问，谁响应访问
-3. 一次读写如何经过五个通道
-4. 每个通道怎样完成一次传输
-5. Transaction、Burst 和 Beat
-6. AXI 的性能从哪里来
-7. 多个组件怎样连接
-8. 为什么要插入寄存器切片
-9. A1 剩余术语与阅读边界
-10. 原文覆盖对照与自测
+## A1.2 AXI 架构 / AXI Architecture
 
-## 1. AHB 已经能完成读写，为什么还需要 AXI
+AXI 协议基于突发（burst），并定义了五个相互独立的事务通道（transaction channels）：
+
+- 读地址通道，其信号名称以 `AR` 开头。
+- 读数据通道，其信号名称以 `R` 开头。
+- 写地址通道，其信号名称以 `AW` 开头。
+- 写数据通道，其信号名称以 `W` 开头。
+- 写响应通道，其信号名称以 `B` 开头。
 
-**AXI 要改善的不是“能不能通信”，而是长延迟访问发生时，系统还能不能继续提交工作。** AHB（Advanced High-performance Bus，高性能总线）已经支持等待、Burst 和流水线；无等待时，前一笔的数据阶段可以与后一笔的地址阶段重叠。问题出现在当前数据阶段需要等待的时候。
+> **原文（English）**
+>
+> The AXI protocol is burst-based and defines five independent transaction channels:
+>
+> - Read address, which has signal names beginning with AR.
+> - Read data, which has signal names beginning with R.
+> - Write address, which has signal names beginning with AW.
+> - Write data, which has signal names beginning with W.
+> - Write response, which has signal names beginning with B.
 
-假设主设备连续读取 A=`0x1000` 和 B=`0x1004`，A 的数据要多等两拍：
+地址通道携带描述待传输数据性质的控制信息。数据使用以下任一通道在主设备与从设备之间传输：
 
-![AHB-Lite 等待状态时序](images/a1-ahb-wait.png)
+- 写数据通道，用于将数据从主设备传输到从设备。在写事务中，从设备使用写响应通道向主设备发出传输完成信号。
+- 读数据通道，用于将数据从从设备传输到主设备。
 
-图 1：AHB-Lite 等待状态（教学时序，非仿真截图）。默认 HSEL=1、HWRITE=0、HSIZE=010、HBURST=SINGLE、HRESP=OKAY。T1 接受 A；T2、T3 的 `HREADY=0` 延长 A 的数据阶段，此时 B 虽已出现在 `HADDR` 上，却尚未被接受，地址和控制信息必须保持；到 T4，A 完成的同时才接受 B。
+> **原文（English）**
+>
+> An address channel carries control information that describes the nature of the data to be transferred. The data is transferred between master and slave using either:
+>
+> - A write data channel to transfer data from the master to the slave. In a write transaction, the slave uses the write response channel to signal the completion of the transfer to the master.
+> - A read data channel to transfer data from the slave to the master.
 
-AXI 把读地址通道 AR 和读数据通道 R 分开，两条通道各自握手。仍让 A 在 T4 返回，并假设从设备能容纳两笔请求：
+AXI 协议：
 
-![AXI 多个未完成读取事务时序](images/a1-axi-outstanding.png)
+- 允许在实际数据传输之前发出地址信息。
+- 支持多个未完成事务（outstanding transactions）。
+- 支持事务乱序完成（out-of-order completion）。
 
-图 2：AXI 的两个单拍读取（教学时序，非仿真截图）。默认 `ARLEN=0`、`ARSIZE=010`、`ARBURST=INCR`，响应为 OKAY。T1、T2 分别完成 A、B 的 AR 握手；到 T4 返回 A 之前，两笔请求都已被接受但尚未完成，这就是两个 Outstanding（未完成事务）。T4、T5 再通过 R 通道依次返回数据。
+> **原文（English）**
+>
+> The AXI protocol:
+>
+> - Permits address information to be issued ahead of the actual data transfer.
+> - Supports multiple outstanding transactions.
+> - Supports out-of-order completion of transactions.
 
-**关键区别是：AHB 当前数据阶段的等待会牵制后续地址的接受；AXI 的地址与数据通道可以独立推进。** 多个 Outstanding 不等于乱序完成，图中仍按 A、B 返回；具体顺序规则在 A5、A6 中学习。
+图 A1-1 展示写事务如何使用写地址通道、写数据通道和写响应通道。
 
-| AHB 的限制 | AXI 提供的机制 | 实现代价 |
-| --- | --- | --- |
-| 当前数据阶段等待会影响后续地址推进 | 独立通道、独立握手、多个 Outstanding | 需要更多缓冲和事务跟踪逻辑 |
+> **原文（English）**
+>
+> Figure A1-1 shows how a write transaction uses the write address, write data, and write response channels.
 
-AXI 提供的是并行处理的机会，不保证固定快几拍。实际性能还取决于从设备的处理能力、缓冲容量、资源冲突和顺序要求；需求较简单时，AHB 仍然适用。完整 AHB 还具有本例未展开的机制，这里只比较一个 AHB-Lite 接口上的基本流水行为。
+![图 A1-1：写通道架构](image/axi-a1/figure-a1-1-channel-architecture-writes.png)
 
-## 2. 谁发起访问，谁响应访问
+> **原文图题（English）**：Figure A1-1 Channel architecture of writes
 
-**AXI 沿用了与 AHB 相同的基本主从关系：Master 发起事务，Slave 接收并响应事务。** AXI 的主要变化不在角色，而在地址、数据和响应的传递方式，以及多笔事务的并行机制。
+图 A1-2 展示读事务如何使用读地址通道和读数据通道。
 
-这一节对应 A1.3.1，只用于统一后文使用的角色和方向术语。
+> **原文（English）**
+>
+> Figure A1-2 shows how a read transaction uses the read address and read data channels.
 
-| 术语 | 含义 | 教学例子 |
-| --- | --- | --- |
-| Component，组件 | 系统中的一个功能单元 | CPU、DMA 控制器、内存控制器 |
-| Master，主设备 | 发起读或写事务的一方 | CPU 请求读内存 |
-| Slave，从设备 | 接收并响应事务的一方 | 内存控制器返回数据 |
-| Memory slave，存储器从设备 | 提供存储器访问的从设备 | SRAM 控制器 |
-| Peripheral slave，外设从设备 | 提供外设访问的从设备 | 控制寄存器接口 |
-| Interconnect，互连 | 连接主设备和从设备的组件 | 把访问送往对应目标的连接逻辑 |
+![图 A1-2：读通道架构](image/axi-a1/figure-a1-2-channel-architecture-reads.png)
 
-```mermaid
-flowchart LR
-    M["Master：CPU"] -->|"发起读写请求"| I["Interconnect：互连"]
-    I -->|"送往目标"| S["Slave：内存控制器"]
-    S -.->|"返回数据或响应"| I
-    I -.->|"送回请求方"| M
-```
+> **原文图题（English）**：Figure A1-2 Channel architecture of reads
 
-主从角色由谁发起事务决定，**不是由当前谁在发送数据决定**。读操作中，从设备发送读数据，但它仍然是从设备。
+### A1.2.1 通道定义 / Channel definition
 
-针对某一笔事务，靠近发起方叫 **Upstream（上游）**，靠近目标方叫 **Downstream（下游）**。返回数据流向上游，不会让这两个称呼互换。一个组件也可能在不同接口上承担不同角色。
+五个独立通道中的每一个都由一组信息信号（information signals）以及提供双向握手机制（two-way handshake mechanism）的 `VALID` 和 `READY` 信号组成。参见第 A3-41 页的“基本读写事务”。
 
-## 3. 一次读写如何经过五个通道
+> **原文（English）**
+>
+> Each of the five independent channels consists of a set of information signals and VALID and READY signals that provide a two-way handshake mechanism. See Basic read and write transactions on page A3-41.
 
-对应 A1.2 及原文 Figure A1-1、Figure A1-2。
+![补充图：单个 AXI 通道的信号组成](image/axi-a1/supplemental-channel-signals.png)
 
-通道是一组共同传递某类信息的信号。AXI 把读写操作拆成五条独立通道：
+信息源（information source）使用 `VALID` 信号表示通道上存在有效的地址、数据或控制信息。目的端（destination）使用 `READY` 信号表示它能够接收该信息。读数据通道和写数据通道还都包含一个 `LAST` 信号，用于指示事务中最后一个数据项（final data item）的传输。
 
-| 通道 | 英文名称 | 信息方向 | 负责什么 |
-| --- | --- | --- | --- |
-| AW | Write Address | Master → Slave | 写地址及本次写事务的控制信息 |
-| W | Write Data | Master → Slave | 写数据及相关信息 |
-| B | Write Response | Slave → Master | 写事务的响应 |
-| AR | Read Address | Master → Slave | 读地址及本次读事务的控制信息 |
-| R | Read Data | Slave → Master | 读数据及读响应信息 |
+> **原文（English）**
+>
+> The information source uses the VALID signal to show when valid address, data, or control information is available on the channel. The destination uses the READY signal to show when it can accept the information. Both the read data channel and the write data channel also include a LAST signal to indicate the transfer of the final data item in a transaction.
 
-这里的方向是信息流方向；用于握手的 READY 沿相反方向返回，下一节会解释。
+#### 读地址通道和写地址通道 / Read and write address channels
 
-### 3.1 写操作：地址、数据、响应分开走
+读事务和写事务各自具有独立的地址通道。相应的地址通道携带某一事务所需的全部地址和控制信息。
 
-假设 CPU 向地址 `0x40000000` 写入一个 32 位数 `0x12345678`。
+> **原文（English）**
+>
+> Read and write transactions each have their own address channel. The appropriate address channel carries all the required address and control information for a transaction.
 
-```mermaid
-flowchart LR
-    M["Master：CPU"] -->|"AW：地址 0x40000000 + 控制信息"| S["Slave：目标组件"]
-    M -->|"W：数据 0x12345678"| S
-    S -->|"B：写响应"| M
-```
+#### 读数据通道 / Read data channel
 
-可以把 AW 看成说明“写到哪里、怎样写”，W 负责“实际内容”，B 负责“返回处理结果”。
+读数据通道将读数据和读响应信息（read response information）从从设备传送到主设备，并包括：
 
-**这张图表示职责，不表示固定的时间先后。** 地址信息可以提前发出；写地址和写数据通道独立，不能据此假设 AW 必须先于 W 完成传输。具体通道依赖规则在 A3。
+- 数据总线（data bus），其宽度可以是 8、16、32、64、128、256、512 或 1024 位。
+- 指示读事务完成状态的读响应信号（read response signal）。
 
-所有写事务都需要通过 B 通道进行完成响应。若一笔写事务包含多拍数据，也不是每拍都返回一次 B，而是针对整笔事务返回响应。响应的架构含义和它是否已到达最终存储位置，要结合 A4、A6 理解。
+> **原文（English）**
+>
+> The read data channel carries both the read data and the read response information from the slave to the master, and includes:
+>
+> - The data bus, which can be 8, 16, 32, 64, 128, 256, 512, or 1024 bits wide.
+> - A read response signal indicating the completion status of the read transaction.
 
-### 3.2 读操作：返回数据时一起带回响应
+![补充时序图：读数据通道](image/axi-a1/supplemental-read-data-channel-timing.png)
 
-假设 CPU 从地址 `0x40000000` 读取一个数。
+#### 写数据通道 / Write data channel
 
-```mermaid
-flowchart LR
-    M["Master：CPU"] -->|"AR：地址 0x40000000 + 控制信息"| S["Slave：目标组件"]
-    S -->|"R：读出的数据 + 读响应信息"| M
-```
+写数据通道将写数据从主设备传送到从设备，并包括：
 
-读操作只用两条通道，因为 R 已经同时承载数据和读响应，不需要再设置一条单独的读响应通道。
+- 数据总线，其宽度可以是 8、16、32、64、128、256、512 或 1024 位。
+- 每八个数据位对应一个字节通道选通信号（byte lane strobe signal），用于指示数据中哪些字节有效。
 
-### 3.3 地址通道不只传地址
+> **原文（English）**
+>
+> The write data channel carries the write data from the master to the slave and includes:
+>
+> - The data bus, which can be 8, 16, 32, 64, 128, 256, 512, or 1024 bits wide.
+> - A byte lane strobe signal for every eight data bits, indicating the bytes of the data that are valid.
 
-AR 和 AW 分别携带对应事务所需的地址及控制信息。教学上可以先理解为“起点在哪里、要传多少、按什么方式传”。具体信号和编码到 A2、A3 再学。
+![补充时序图：写数据通道](image/axi-a1/supplemental-write-data-channel-timing.png)
 
-## 4. 每个通道怎样完成一次传输
+写数据通道信息始终被视为已缓冲（buffered），因此主设备无需从设备确认先前的写事务，即可执行写事务。
 
-对应 A1.2.1。
+> **原文（English）**
+>
+> Write data channel information is always treated as buffered, so that the master can perform write transactions without slave acknowledgement of previous write transactions.
 
-### 4.1 信息与握手信号
+![补充时序案例：上一笔未响应，下一笔写事务仍可推进](image/axi-a1/supplemental-buffered-write-timing.png)
 
-每个通道都有一组信息信号，以及 VALID、READY 两个握手信号。
+<span style="color:#D9822B;">上图给出两笔单拍写事务的简化案例，并假设从设备始终置高 <code style="color:#D9822B;">AWREADY</code>、<code style="color:#D9822B;">WREADY</code>，主设备始终置高 <code style="color:#D9822B;">BREADY</code>：</span>
 
-```mermaid
-flowchart LR
-    SRC["信息源：发送方"] -->|"地址 / 数据 / 响应信息"| DST["信息目的地：接收方"]
-    SRC -->|"VALID：信息有效"| DST
-    DST -->|"READY：能够接收"| SRC
-```
+- <span style="color:#D9822B;">T1 时，写事务 1 的地址 A1 和数据 D1 完成握手。</span>
+- <span style="color:#D9822B;">T2 时，写事务 1 的 <code style="color:#D9822B;">BVALID</code> 仍为低，即从设备尚未返回写响应；主设备仍可立即发送写事务 2，地址 A2 和数据 D2 在该周期完成握手。</span>
+- <span style="color:#D9822B;">T5、T6 时，从设备才依次通过 B 通道返回写事务 1 和写事务 2 的响应。</span>
 
-- 发送方用 **VALID** 表示当前信息有效。
-- 接收方用 **READY** 表示当前可以接收信息。
-- 学习补充：在时钟上升沿，两者同时为高才完成一次传输；这是 A3 的握手规则。
+<span style="color:#D9822B;">这里的“已缓冲”表示主设备不必把写事务串行化为“发送一笔、等待 B 响应、再发送下一笔”。但它不表示可以忽略握手，也不表示 B 响应可以省略：若从设备或互连暂时没有空间继续接收，可以拉低 <code style="color:#D9822B;">AWREADY</code> 或 <code style="color:#D9822B;">WREADY</code> 施加背压；所有写事务最终仍必须获得写响应。</span>
 
-| 在某次上升沿采样到的 VALID | READY | 是否完成传输 |
-| --- | --- | --- |
-| 0 | 0 | 否 |
-| 0 | 1 | 否，接收方准备好了但没有有效信息 |
-| 1 | 0 | 否，发送方正在等待接收 |
-| 1 | 1 | 是 |
+#### 写响应通道 / Write response channel
 
-例如 W 通道由 Master 产生 WVALID，Slave 产生 WREADY；R 通道则由 Slave 产生 RVALID，Master 产生 RREADY。**VALID 属于信息发送方，不固定属于 Master。**
+从设备使用写响应通道对写事务作出响应。所有写事务都要求通过写响应通道发出完成信号（completion signaling）。
 
-学习补充：等待接收期间，发送方必须保持有效信息稳定，不能因 READY 为低而随意撤回 VALID；发送方也不能等待 READY 才开始置起 VALID。完整时序和依赖关系请读 A3.2～A3.3。
+> **原文（English）**
+>
+> A slave uses the write response channel to respond to write transactions. All write transactions require completion signaling on the write response channel.
 
-### 4.2 数据宽度、字节选通与 LAST
+如第 A1-27 页的图 A1-1 所示，仅对完整事务发出完成信号，而不是对事务中的每次数据传输发出完成信号。
 
-A1 列出的读、写数据总线宽度为：**8、16、32、64、128、256、512、1024 位**。这是规范提供的宽度选项，不表示一个实现运行时可以随意切换总线宽度。
+> **原文（English）**
+>
+> As Figure A1-1 on page A1-27 shows, completion is signaled only for a complete transaction, not for each data transfer in a transaction.
 
-W 通道还带有字节选通信息：每 8 位数据对应一个选通信号位，用来说明哪些字节有效。后续信号名称是 **WSTRB**。
+![补充时序图：4 拍写事务只产生 1 次写响应](image/axi-a1/supplemental-write-response-channel-timing.png)
 
-以 32 位写数据为例：
+<span style="color:#D9822B;">上图假设写地址已经完成握手，并以一笔包含 4 个数据拍的写事务为例：</span>
 
-| 字节位置 | WDATA 对应位 | 有效性由谁指示 |
-| --- | --- | --- |
-| 字节 0 | `[7:0]` | `WSTRB[0]` |
-| 字节 1 | `[15:8]` | `WSTRB[1]` |
-| 字节 2 | `[23:16]` | `WSTRB[2]` |
-| 字节 3 | `[31:24]` | `WSTRB[3]` |
+- <span style="color:#D9822B;">T1～T4 时，<code style="color:#D9822B;">WVALID</code> 与 <code style="color:#D9822B;">WREADY</code> 在各个上升沿同时为高，因此依次传输了 W1、W2、W3、W4。W1～W3 的 <code style="color:#D9822B;">WLAST</code> 为低，T4 传输 W4 时 <code style="color:#D9822B;">WLAST=1</code>，表示这是一笔写突发的最后一个数据拍。</span>
+- <span style="color:#D9822B;">T1～T4 的每个数据拍之后都没有单独产生 <code style="color:#D9822B;">BRESP</code>。T5 时，从设备才置高 <code style="color:#D9822B;">BVALID</code> 并给出 <code style="color:#D9822B;">BRESP=OKAY</code>，为整笔写事务返回一次完成响应。</span>
+- <span style="color:#D9822B;">图中主设备始终置高 <code style="color:#D9822B;">BREADY</code>，所以 T5 上升沿同时满足 <code style="color:#D9822B;">BVALID=1</code> 和 <code style="color:#D9822B;">BREADY=1</code>，该写响应在此时完成传输。</span>
 
-在地址和传输尺寸允许的前提下，`WSTRB = 0011` 表示最低两个字节通道有效，另外两个不参与本次写入。它不是对整个 32 位数据的一次“全写或不写”选择。
+<span style="color:#D9822B;">因此，4 个 W 数据拍属于同一笔完整写事务，最终只对应一次 B 通道写响应，而不是每个 W 数据拍各返回一次响应。T5 仅是便于理解的示例时序，并不表示协议规定从设备必须在最后一个数据拍后的下一周期返回响应。</span>
 
-字节选通帮助支持非对齐传输；非对齐访问并不意味着可以任意设置选通，地址、传输尺寸与字节位置仍需符合 A3 的规则。
+![图 A1-1：写通道架构](image/axi-a1/figure-a1-1-channel-architecture-writes.png)
 
-读、写数据通道还有 **LAST**，表示当前数据是事务中的最后一个数据项，分别称为 RLAST 和 WLAST。它不是一个独立通道；最后一拍仍需完成握手。
+### A1.2.2 接口与互连 / Interface and interconnect
 
-### 4.3 为什么上一笔没响应，下一笔写入也可能推进
+典型系统由若干主设备和从设备组成，这些设备通过某种形式的互连（interconnect）连接在一起，如图 A1-3 所示。
 
-A1 说明写数据通道信息按可缓冲的方式对待，使主设备能够在前面写事务尚未得到从设备确认时继续开展写事务。
+> **原文（English）**
+>
+> A typical system consists of several master and slave devices that are connected together through some form of interconnect, as Figure A1-3 shows.
 
-可以理解为系统允许把多个工作放在处理中，而不是每次都要等到上一笔 B 返回后才能推进下一笔。**这不意味着缓存无限大，也不意味着不需要 B 响应**；接收能力由握手体现，事务顺序仍受协议约束。
+![图 A1-3：接口与互连](image/axi-a1/figure-a1-3-interface-interconnect.png)
 
-## 5. Transaction、Burst 和 Beat
+> **原文图题（English）**：Figure A1-3 Interface and interconnect
 
-对应 A1.3.2。这三个词描述的是不同层次。
+AXI 协议为以下对象之间的接口（interface）提供单一接口定义：
 
-| 术语 | 中文理解 | 关注范围 |
-| --- | --- | --- |
-| Transaction | 事务 | 主设备对目标从设备发起一次操作所需的完整 AXI 总线活动 |
-| Burst | 突发传输 | 搬运该操作所需的有效载荷数据的一组传输 |
-| Beat | 数据拍 | Burst 中的一次数据传输；这里不是单纯指一个时钟周期 |
+- 主设备与互连。
+- 从设备与互连。
+- 主设备与从设备。
 
-以一笔包含 4 拍数据的写事务为例：
+> **原文（English）**
+>
+> The AXI protocol provides a single interface definition, for the interfaces between:
+>
+> - A master and the interconnect
+> - A slave and the interconnect
+> - A master and a slave
 
-```mermaid
-flowchart TB
-    T["一笔写 Transaction：完整操作"] --> A["AW：地址与控制信息"]
-    T --> D["W：一个包含 4 拍的 Burst"]
-    T --> B["B：一份写响应"]
-    D --> D0["Beat 0"]
-    D --> D1["Beat 1"]
-    D --> D2["Beat 2"]
-    D --> D3["Beat 3：WLAST"]
-```
+该接口定义支持多种不同的互连实现。
 
-该图是组成关系图，不是时序图。一次事务不是一个时钟周期；等待 READY 时，一个 Beat 可以跨多个周期才被接收。
+> **原文（English）**
+>
+> This interface definition supports many different interconnect implementations.
 
-### 5.1 只发起始地址是什么意思
+> **注（Note）**
+>
+> 设备之间的互连等同于另一个具有对称主设备端口和从设备端口的设备，实际的主设备和从设备可以连接到这些端口。
+>
+> **原文（English）**
+>
+> An interconnect between devices is equivalent to another device with symmetrical master and slave ports that the real master and slave devices can be connected.
 
-教学例子：采用递增地址的传输方式，从 `0x1000` 开始，每拍传 4 字节，一共 4 拍。
+#### 典型系统拓扑 / Typical system topologies
 
-| 数据拍 | 本拍对应起始地址 | 搬运字节数 |
-| --- | --- | --- |
-| Beat 0 | `0x1000` | 4 |
-| Beat 1 | `0x1004` | 4 |
-| Beat 2 | `0x1008` | 4 |
-| Beat 3 | `0x100C` | 4 |
+大多数系统使用以下三种互连拓扑（interconnect topologies）之一：
 
-地址通道发送一次起始地址及控制信息，后续地址根据约定的传输参数得到，不需要为每拍重新发起一次地址传输。其他 Burst 类型的地址规律不一定递增，详细计算在 A3.4。
+- 共享地址总线和数据总线。
+- 共享地址总线和多条数据总线。
+- 多层结构，具有多条地址总线和数据总线。
 
-对这个例子来说，写操作是 1 次 AW、4 次 W、1 次 B 传输；读操作则是 1 次 AR、4 次 R 传输，最后一拍 R 带 RLAST。Burst 也可以只有一拍，不能把它理解成“必定很多拍”。
+> **原文（English）**
+>
+> Most systems use one of three interconnect topologies:
+>
+> - Shared address and data buses
+> - Shared address buses and multiple data buses
+> - Multilayer, with multiple address and data buses
 
-## 6. AXI 的性能从哪里来
+在大多数系统中，地址通道的带宽要求明显低于数据通道的带宽要求。这类系统可以使用共享地址总线和多条数据总线来支持并行数据传输，从而在系统性能与互连复杂度之间取得良好平衡。
 
-对应 A1.1 的关键特性，以及 A1.2 对地址提前发出、多笔事务和乱序完成的说明。
+> **原文（English）**
+>
+> In most systems, the address channel bandwidth requirement is significantly less than the data channel bandwidth requirement. Such systems can achieve a good balance between system performance and interconnect complexity by using a shared address bus with multiple data buses to enable parallel data transfers.
 
-| 机制 | 它解决的问题 | 不应误解为 |
-| --- | --- | --- |
-| 地址/控制与数据分离 | 地址可以先推进，数据可稍后到达 | 写地址永远必须先于写数据 |
-| 字节选通与非对齐传输支持 | 可以表达哪些字节真正参与写入 | 任何非对齐组合都合法 |
-| Burst 只发送起始地址 | 多拍数据不必反复发送完整地址请求 | 每拍地址一定相同 |
-| 读写数据通道分离 | 有利于读写并行，也有利于实现低成本 DMA 数据搬运 | 所有系统都必然每周期同时读写 |
-| 多个 Outstanding 地址/事务 | 前一笔未完成时仍可发出后续请求，减少串行等待 | 可以无限制发送请求 |
-| 允许乱序完成 | 在顺序规则允许时，先就绪的事务不必被另一笔较慢事务阻塞 | 任意事务、任意数据拍都能乱序 |
-| 易于加入寄存器级 | 将长组合路径分段，帮助满足时序约束 | 加寄存器一定降低总访问时间 |
+### A1.2.3 寄存器切片 / Register slices
 
-**DMA（Direct Memory Access，直接存储器访问）**是让专门的数据搬运组件承担访问工作，减少 CPU 逐项搬运的负担；AXI 是它可以使用的通信接口，不是 DMA 本身。
+每个 AXI 通道只沿一个方向传输信息，且该架构不要求通道之间存在任何固定关系。这些特性意味着，几乎可以在任何通道的任何位置插入寄存器切片（register slice），其代价是增加一个周期的延迟。
 
-### 6.1 Outstanding 与乱序完成不是一回事
+> **原文（English）**
+>
+> Each AXI channel transfers information in only one direction, and the architecture does not require any fixed relationship between the channels. These qualities mean that a register slice can be inserted at almost any point in any channel, at the cost of an additional cycle of latency.
 
-以下只是事务层面的示意，假定两笔请求满足允许乱序完成的条件：
+> **注（Note）**
+>
+> 这些特性使以下方案成为可能：
+>
+> - 在延迟周期数与最大工作频率之间进行权衡。
+> - 在处理器与高性能内存之间采用直接、快速的连接，同时使用简单的寄存器切片，将通往性能要求较低的外设的较长路径隔离开来。
+>
+> **原文（English）**
+>
+> These qualities make the following possible:
+>
+> - Trade-off between cycles of latency and maximum frequency of operation.
+> - Direct, fast connection between a processor and high-performance memory, but to use simple register slices to isolate a longer path to less performance critical peripherals.
 
-```text
-时间向后 →
-发出请求： A ── B
-完成响应：          B ── A
-                    ↑
-             B 比 A 更早完成
-```
+#### 问题：什么是寄存器切片，为什么要加？
 
-发出 B 时 A 尚未完成，说明存在多个 Outstanding 事务；B 比 A 更早完成，才体现乱序完成。系统也可以支持多个 Outstanding，但仍按 A、B 顺序完成。
+![补充图：寄存器切片的通道结构和路径分段](image/axi-a1/supplemental-register-slice-structure.png)
 
-这里没有说同一 Burst 内的数据可以随意重排，也没有说所有相同 ID 的事务都能乱序。ID 与具体保序规则分别留到 A5、A6。
+## A1.3 术语 / Terminology
 
-### 6.2 A1.1 总结的设计目标
+本节概述本规范中使用并在词汇表（Glossary）或其他位置定义的术语。在适当情况下，本节列出的术语链接到相应的词汇表定义。
 
-| 原文中的目标 | 初学者可以怎样理解 |
-| --- | --- |
-| 高带宽、低延迟 | 希望单位时间搬运更多数据，也希望请求较快得到响应；两者不是同一指标 |
-| 支持高频工作，无需依赖复杂桥接 | 接口结构适合高速电路；不代表任何设计都无需桥接 |
-| 适用于多种组件 | 处理器、内存控制器和外设等可围绕统一接口集成 |
-| 适合首次访问延迟较高的内存控制器 | 第一份数据可能较晚返回，接口仍支持安排后续工作 |
-| 互连实现灵活 | 可以根据面积、并行度和性能需求选择连接结构 |
-| 与 AHB、APB 接口向后兼容 | 可以通过适配或桥接组成系统，不是把不同协议的引脚直接相连 |
+> **原文（English）**
+>
+> This section summarizes terms that are used in this specification, and are defined in the Glossary, or elsewhere. Where appropriate, terms that are listed in this section link to the corresponding glossary definition.
 
-带宽表示单位时间能够传送多少数据，延迟表示一次请求需要等待多久。AXI 提供实现高性能的机制，最终表现仍取决于系统实现。
+### A1.3.1 AXI 组件与拓扑 / AXI components and topology
 
-### 6.3 A1 提到的简化接口
+以下术语描述 AXI 组件：
 
-| 接口 | 关系与用途 | 后续阅读 |
-| --- | --- | --- |
-| AXI4-Lite | AXI4 的子集，面向较简单的控制寄存器式访问 | B1 |
-| AXI5-Lite | AXI5 的子集，用于在简单控制寄存器式接口中使用相应 AXI5 能力 | C2 |
+- 组件（Component）。
+- 主设备组件（Master component）。
+- 从设备组件（Slave component），包括内存从设备组件（Memory slave components）和外设从设备组件（Peripheral slave components）。
+- 互连组件（Interconnect component）。
 
-本文的多拍数据和 LAST 示意用于完整 AXI 的入门理解，不能照搬为 AXI4-Lite 的信号清单。AXI4-Stream 另有规范，不是这里的五通道存储器映射接口。
+> **原文（English）**
+>
+> The following terms describe AXI components:
+>
+> - Component
+> - Master component
+> - Slave component, which includes Memory slave components and Peripheral slave components
+> - Interconnect component
 
-## 7. 多个组件怎样连接
+对于某个特定 AXI 事务，上游（Upstream）和下游（Downstream）是指 AXI 组件在 AXI 拓扑中的相对位置。
 
-对应 A1.2.2 及原文 Figure A1-3。
+> **原文（English）**
+>
+> For a particular AXI transaction, Upstream and Downstream refer to the relative positions of AXI components within the AXI topology.
 
-### 7.1 统一接口与互连的两面
+### A1.3.2 AXI 事务和内存类型 / AXI transactions, and memory types
 
-```mermaid
-flowchart TB
-    M1["Master 1：CPU"] --- I["Interconnect"]
-    M2["Master 2：DMA"] --- I
-    M3["Master 3：加速器"] --- I
-    I --- S1["Slave 1：内存"]
-    I --- S2["Slave 2：外设"]
-    I --- S3["Slave 3：存储器"]
-    I --- S4["Slave 4：外设"]
-```
+当 AXI 主设备发起以某个 AXI 从设备为目标的 AXI 操作时：
 
-每条连线代表接口连接，不是单根信号线。图中的具体设备名称是教学例子。
+- AXI 总线上所需的完整操作集合构成 AXI 事务（AXI Transaction）。
+- 所需的任何有效载荷数据均以 AXI 突发（AXI Burst）的形式传输。
+- 一个突发可以包含多次数据传输，即多个 AXI 数据拍（AXI Beats）。
 
-同一套 AXI 接口定义用于 Master 与 Interconnect、Interconnect 与 Slave，以及 Master 与 Slave 的直接连接。
+> **原文（English）**
+>
+> When an AXI master initiates an AXI operation, targeting an AXI slave:
+>
+> - The complete set of required operations on the AXI bus form the AXI Transaction
+> - Any required payload data is transferred as an AXI Burst
+> - A burst can comprise multiple data transfers, or AXI Beats
 
-从接口角色看，互连可以理解为一个同时拥有主、从端口的组件：面向上游 Master 的一侧接收请求，面向下游 Slave 的一侧转发请求。原文描述其具有相互对应的主从端口，不代表两侧端口数量必须相同；原图就画出了 3 个主设备和 4 个从设备。
+### A1.3.3 缓存与缓存操作 / Caches and cache operation
 
-### 7.2 三种典型拓扑
+本规范不定义标准缓存术语，这些术语可在任何缓存参考资料中找到定义。不过，词汇表中的缓存（Cache）和缓存行（Cache line）条目阐明了这些术语在本文档中的使用方式。
 
-下面是资源共享方式的概念图，不是可以直接据此连线的 RTL 电路图。“共享地址”也不是把 AW、AR 合并成一个 AXI 通道。
+> **原文（English）**
+>
+> This specification does not define standard cache terminology, that is defined in any reference work on caching. However, the glossary entries for Cache and Cache line clarify how these terms are used in this document.
 
-```text
-① 地址和数据资源都共享
-多个 Master ── [共享地址路径 + 共享数据路径] ── 多个 Slave
+### A1.3.4 时间描述 / Temporal description
 
-② 地址资源共享，数据路径有多条
-多个 Master ── [共享地址路径] ─────────────── 多个 Slave
-           └─ [数据路径 1 / 数据路径 2 / …] ─┘
+AXI 规范使用“及时地”（in a timely manner）这一术语。
 
-③ 多层结构：地址与数据均有多条路径
-多个 Master ── [地址路径 1 + 数据路径 1] ── 多个 Slave
-           └─ [地址路径 2 + 数据路径 2] ─────┘
-```
-
-| 拓扑 | 理解重点 | 教学上的取舍理解 |
-| --- | --- | --- |
-| 共享地址和数据总线 | 多个访问竞争共同的传输资源 | 实现可较简单，共享资源容易成为瓶颈 |
-| 共享地址总线、多条数据总线 | 地址仍共享，但数据可走不同路径 | 可在复杂度与并行数据传输之间折中 |
-| 多层地址和数据总线 | 为地址和数据提供更多独立路径 | 并行机会更多，实现资源与控制也可能增加 |
-
-为什么第二种结构有意义？一笔 Burst 只需一次地址传输，却可能有多拍数据，所以很多系统对地址通道带宽的需求明显低于对数据通道的需求。共享地址资源、保留多条数据路径，可以取得较好的性能与复杂度平衡。这不是所有系统都成立的固定比例。
-
-## 8. 为什么要插入寄存器切片
-
-对应 A1.2.3。
-
-**Register Slice（寄存器切片）**是在通道路径中加入寄存器级，使信息分阶段向前传递。
-
-```mermaid
-flowchart LR
-    M["Master"] -->|"地址 / 数据 / 响应及握手"| RS["Register Slice"]
-    RS --> S["Slave 或互连"]
-```
-
-图表示一个通道路径的分段，READY 反向握手也必须正确处理。实际实现不能只给数据加寄存器而忽略握手关系。
-
-AXI 各通道的信息流有固定方向，通道之间又不要求固定的周期对应关系，因此可以在通道的许多位置插入寄存器级。原文以增加一个周期延迟来说明这种流水化的代价；完整组件的延迟还应看实现和配置。
-
-```text
-原来：寄存器 ───── 一段较长的组合逻辑 ───── 寄存器
-分段：寄存器 ── 较短逻辑 ── 寄存器 ── 较短逻辑 ── 寄存器
-```
-
-较短的组合路径有机会支持更高时钟频率，这就是帮助实现 **Timing Closure（时序收敛）**：让信号在规定的时钟周期内到达并满足时序要求。
-
-这里需要同时看两个量：
-
-- **周期延迟**：多一级寄存器通常意味着多等一级流水线。
-- **时钟频率**：每一级路径更短，可能允许每秒运行更多周期。
-
-所以“周期数变多”和“频率能提高”可以同时发生，实际时间是否缩短要结合两者计算。
-
-原文给出的系统思路是：处理器到高性能内存可采用直接、快速的连接；对距离更远、性能要求较低的外设路径，则用寄存器切片隔离长路径。独立通道使这种布局更灵活，但并不取消通道之间的协议依赖。
-
-## 9. A1 剩余术语与阅读边界
-
-### 9.1 Cache 与 Cache line（A1.3.3）
-
-A1 明确说明：本规范不承担讲解通用缓存术语的任务；文末 Glossary 中的 Cache 和 Cache line 条目说明它们在本规范中的用法。
-
-作为入门辅助，可以先这样理解：**Cache（缓存）**保存部分数据的副本，帮助更快完成访问；**Cache line（缓存行）**是缓存组织数据的基本块。不要把缓存行与 AXI 的一个 Beat 混为一谈，也不要默认一行一定等于一个 Burst。
-
-这些是教学解释。缓存行大小和缓存行为取决于具体系统，A1 没有规定固定大小，也没有展开缓存一致性协议。
-
-### 9.2 in a timely manner（A1.3.4）
-
-A1 的最后一小节指出规范会使用 **in a timely manner** 这一时间描述。中文可先理解为“及时地”。
-
-A1 此处没有给出固定周期数，因此不能自行把它解释成“必须下一拍完成”或“必须在某个固定周期数以内完成”。具体要求应结合该用语出现处的上下文和规范定义阅读。
-
-### 9.3 本章学到哪里就够了
-
-读完 A1，应当能画出五通道方向、描述一笔读写事务、区分 Transaction/Burst/Beat，并解释互连与寄存器切片的作用。
-
-信号位宽和完整信号表在 A2；握手、通道依赖、Burst 地址规则在 A3；事务属性在 A4；ID 和顺序规则在 A5、A6。本文涉及这些内容时仅提供理解 A1 所需的补充，不替代后续章节。
-
-## 10. 原文覆盖对照与自测
-
-### 10.1 A1 全章覆盖对照
-
-| PDF 位置 | 原文章节或要点 | 本文位置 |
-| --- | --- | --- |
-| A1-25 | Introduction：架构与术语导览 | 开篇与阅读路线 |
-| A1.1 / A1-26 | 六项设计目标 | 6.2 |
-| A1.1 / A1-26 | 地址数据分离、字节选通、Burst、独立读写、Outstanding、乱序、寄存器级 | 4、5、6、8 |
-| A1.1 / A1-26 | AXI4-Lite、AXI5-Lite 及 B1/C2 引用 | 6.3 |
-| A1.2 / A1-27 | 五通道、地址控制信息、地址提前、多笔事务与乱序 | 3、6 |
-| Figure A1-1 / A1-27 | 写通道架构 | 3.1、5 |
-| Figure A1-2 / A1-27 | 读通道架构 | 3.2 |
-| A1.2.1 / A1-28 | 信息信号、VALID/READY、LAST | 4.1、4.2 |
-| A1.2.1 / A1-28 | 读写地址、数据宽度、读响应、字节选通 | 3.3、4.2 |
-| A1.2.1 / A1-28 | 写数据缓冲语义、每事务写响应 | 4.3、3.1 |
-| A1.2.2 / A1-28～29 | 统一接口、互连主从端口、Figure A1-3 | 7.1 |
-| A1.2.2 / A1-29 | 三类拓扑、地址与数据带宽差异 | 7.2 |
-| A1.2.3 / A1-29 | 寄存器切片、延迟与频率取舍、内存及外设路径例子 | 8 |
-| A1.3.1 / A1-30 | 组件、主从、两类从设备、互连、上游下游 | 2、7.1 |
-| A1.3.2 / A1-30 | Transaction、Burst、Beat | 5 |
-| A1.3.3 / A1-30 | 缓存术语说明与 Glossary 引用 | 9.1 |
-| A1.3.4 / A1-30 | 时间描述 in a timely manner | 9.2 |
-
-### 10.2 自测：先自己回答，再展开答案
-
-1. 为什么写操作有三个通道，而读操作只有两个？
-2. R 通道中，谁驱动 VALID，谁驱动 READY？
-3. 一笔四拍写事务需要几次 AW、W、B 传输？
-4. VALID 为 1、READY 为 0 时，是否已经完成传输？
-5. 多个 Outstanding 事务是否一定乱序完成？
-6. 为什么“共享地址、多条数据路径”可能有效？
-7. 插入寄存器切片后，多等一个周期为什么仍可能有价值？
-8. 上游、下游会因为读数据返回而互换吗？
-9. Cache line、Burst、Beat 是否是同一个概念？
-10. “及时地”是否就表示“下一拍”？
-
-<details>
-<summary>展开参考答案</summary>
-
-1. 写操作通过 AW、W、B 分别传地址控制、数据和响应；读操作的 R 同时携带数据与响应，所以只需要 AR、R。
-2. Slave 提供读数据，所以驱动 RVALID；Master 接收数据，所以驱动 RREADY。
-3. 1 次 AW、4 次 W、1 次 B；这里统计成功传输次数，不是耗费周期数。
-4. 没有。必须在时钟上升沿同时采样到 VALID、READY 为高。
-5. 不一定。Outstanding 说明有尚未完成的事务，乱序说明完成先后发生改变，两者不是一回事。
-6. 一个地址请求可能对应多拍数据，地址带宽需求可能较低，而多条数据路径可以支持并行数据传输。
-7. 它可缩短每一级组合路径，帮助提高可达时钟频率；总时间还要结合周期数与频率评估。
-8. 不会。上下游是针对这笔事务发起方与目标方的相对位置。
-9. 不是。缓存行是缓存组织概念，Burst 是成组的数据传输，Beat 是其中一次数据传输。
-10. 不是。A1 没有在此给出固定周期要求。
-
-</details>
-
-### 10.3 下一步
-
-先尝试不看正文，画出 Master 和 Slave 之间的五条通道，并给每条通道标出信息方向。能够正确画出后，再读 A2，把具体信号放回通道；随后读 A3，理解这些信号在时钟边沿怎样协作。
-
-参考来源：Arm IHI 0022H《AMBA AXI and ACE Protocol Specification》，Chapter A1，A1-25～A1-30。本文为学习导读，协议实现应以对应版本规范为准。
-
-第一节时序补充参考：Arm《Fundamentals of System-on-Chip Design》Chapter 3“AMBA, AHB, and APB”，地址/数据流水线与 HREADY 说明；Arm IHI 0022H，A3.2～A3.4 的握手、通道依赖和事务结构规则。图示周期安排为教学假设，不是规范规定的固定响应延迟。
+> **原文（English）**
+>
+> The AXI specification uses the term in a timely manner.

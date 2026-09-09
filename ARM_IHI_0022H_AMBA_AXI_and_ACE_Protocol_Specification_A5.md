@@ -1,4 +1,4 @@
-# A5：事务标识符
+# A5：Transaction Identifiers
 
 > 译文性质：Arm 规范的非官方中文翻译。
 >
@@ -12,12 +12,12 @@
 
 本章介绍一种支持事务乱序完成以及发出多个未完成地址请求的机制。本章包含以下各节：
 
-- AXI 事务标识符，见第 A5-80 页。
+- AXI `Transaction Identifiers`，见第 A5-80 页。
 - ID 信号，见第 A5-81 页。
 
-## A5.1 AXI 事务标识符
+## A5.1 AXI Transaction Identifiers
 
-AXI 协议包含 AXI ID 事务标识符。主设备可以使用这些标识符来标识必须按顺序返回的不同事务。
+AXI 协议包含 AXI ID（`Transaction Identifier`）。主设备可以使用这些 ID 来标识必须按顺序返回的不同事务。
 
 > 原文：A master can use these to identify separate transactions that must be returned in order.
 
@@ -57,7 +57,7 @@ AXI 协议包含 AXI ID 事务标识符。主设备可以使用这些标识符�
 
 > **注（Note）**
 >
-> AXI4 协议支持一种基于 AXI ID 事务标识符的扩展顺序模型。参见第 A6 章“AXI 顺序模型”。
+> AXI4 协议支持一种基于 AXI ID（`Transaction Identifier`）的扩展顺序模型。参见第 A6 章“AXI 顺序模型”。
 
 ### A5.2.1 读数据顺序
 
@@ -109,7 +109,7 @@ AXI3 允许对具有不同 ID 的写数据进行交织，但该功能在 AXI4 �
 
 > 原文：The interleaving of write data with different IDs was permitted in AXI3, but is deprecated in AXI4 and later.
 
-### A5.2.3 互连对事务标识符的使用
+### A5.2.3 互连对 Transaction Identifiers 的使用
 
 当主设备连接到互连时，互连会向 `ARID`、`AWID` 和 `WID` 标识符附加额外位，这些额外位对于该主设备端口是唯一的。这会产生两个效果：
 
