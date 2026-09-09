@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net">
+  <diagram name="表 A5-1 通道事务 ID">
+    <mxGraphModel page="1" pageScale="1" pageWidth="1440" pageHeight="900" background="#ffffff">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="2" value="" style="fillColor=#ffffff;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="0" y="0" width="1440" height="900" as="geometry"/>
+        </mxCell>
+        <mxCell id="3" value="表 A5-1　通道事务 ID" style="text;html=0;whiteSpace=wrap;fontFamily=Microsoft YaHei;fontSize=42;fontStyle=1;fontColor=#111111;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="150" y="25" width="1140" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="4" value="事务通道" style="text;html=0;whiteSpace=wrap;fontFamily=Microsoft YaHei;fontSize=34;fontStyle=1;fontColor=#111111;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="190" y="125" width="700" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="5" value="事务 ID" style="text;html=0;whiteSpace=wrap;fontFamily=Microsoft YaHei;fontSize=34;fontStyle=1;fontColor=#111111;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="990" y="125" width="250" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="6" value="写地址通道" style="text;html=0;whiteSpace=wrap;fontFamily=Microsoft YaHei;fontSize=32;fontColor=#111111;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="190" y="215" width="700" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="7" value="AWID" style="text;html=0;whiteSpace=wrap;fontFamily=Microsoft YaHei;fontSize=34;fontStyle=1;fontColor=#111111;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="990" y="215" width="250" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="8" value="写数据通道，仅 AXI3" style="text;html=0;whiteSpace=wrap;fontFamily=Microsoft YaHei;fontSize=32;fontColor=#111111;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="190" y="305" width="700" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="9" value="WIDᵃ" style="text;html=0;whiteSpace=wrap;fontFamily=Microsoft YaHei;fontSize=34;fontStyle=1;fontColor=#111111;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="990" y="305" width="250" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="10" value="写响应通道" style="text;html=0;whiteSpace=wrap;fontFamily=Microsoft YaHei;fontSize=32;fontColor=#111111;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="190" y="395" width="700" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="11" value="BID" style="text;html=0;whiteSpace=wrap;fontFamily=Microsoft YaHei;fontSize=34;fontStyle=1;fontColor=#111111;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="990" y="395" width="250" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="12" value="读地址通道" style="text;html=0;whiteSpace=wrap;fontFamily=Microsoft YaHei;fontSize=32;fontColor=#111111;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="190" y="485" width="700" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="13" value="ARID" style="text;html=0;whiteSpace=wrap;fontFamily=Microsoft YaHei;fontSize=34;fontStyle=1;fontColor=#111111;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="990" y="485" width="250" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="14" value="读数据通道" style="text;html=0;whiteSpace=wrap;fontFamily=Microsoft YaHei;fontSize=32;fontColor=#111111;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="190" y="575" width="700" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="15" value="RID" style="text;html=0;whiteSpace=wrap;fontFamily=Microsoft YaHei;fontSize=34;fontStyle=1;fontColor=#111111;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="990" y="575" width="250" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="16" value="a.　WID 信号仅在 AXI3 中实现。" style="text;html=0;whiteSpace=wrap;fontFamily=Microsoft YaHei;fontSize=28;fontColor=#111111;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="190" y="680" width="1050" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="17" value="根据原表中文重绘" style="text;html=0;whiteSpace=wrap;fontFamily=Microsoft YaHei;fontSize=23;fontColor=#666666;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="190" y="795" width="1050" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="20" style="endArrow=none;startArrow=none;strokeColor=#111111;strokeWidth=4;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="150" y="115" as="sourcePoint"/><mxPoint x="1290" y="115" as="targetPoint"/></mxGeometry>
+        </mxCell>
+        <mxCell id="21" style="endArrow=none;startArrow=none;strokeColor=#111111;strokeWidth=3;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="150" y="205" as="sourcePoint"/><mxPoint x="1290" y="205" as="targetPoint"/></mxGeometry>
+        </mxCell>
+        <mxCell id="22" style="endArrow=none;startArrow=none;strokeColor=#555555;strokeWidth=2;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="150" y="295" as="sourcePoint"/><mxPoint x="1290" y="295" as="targetPoint"/></mxGeometry>
+        </mxCell>
+        <mxCell id="23" style="endArrow=none;startArrow=none;strokeColor=#555555;strokeWidth=2;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="150" y="385" as="sourcePoint"/><mxPoint x="1290" y="385" as="targetPoint"/></mxGeometry>
+        </mxCell>
+        <mxCell id="24" style="endArrow=none;startArrow=none;strokeColor=#555555;strokeWidth=2;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="150" y="475" as="sourcePoint"/><mxPoint x="1290" y="475" as="targetPoint"/></mxGeometry>
+        </mxCell>
+        <mxCell id="25" style="endArrow=none;startArrow=none;strokeColor=#555555;strokeWidth=2;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="150" y="565" as="sourcePoint"/><mxPoint x="1290" y="565" as="targetPoint"/></mxGeometry>
+        </mxCell>
+        <mxCell id="26" style="endArrow=none;startArrow=none;strokeColor=#111111;strokeWidth=4;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="150" y="655" as="sourcePoint"/><mxPoint x="1290" y="655" as="targetPoint"/></mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
