@@ -1,10 +1,10 @@
 # AXI 协议翻译与学习资料记录
 
-本仓库用于整理 AMBA AXI 协议中文翻译、旧版学习导读、设计示例和验证实践。A1 已按忠实翻译规范重新制作，A2～A3 暂时保留为旧版学习导读；从 A5 及后续章节开始，正文按照忠实翻译规范制作。
+本仓库用于整理 AMBA AXI 协议中文翻译、旧版学习导读、设计示例和验证实践。A1、A2 已按忠实翻译规范重新制作，A3 暂时保留为旧版学习导读；从 A5 及后续章节开始，正文按照忠实翻译规范制作。
 
 ## 个人学习进度
 
-- 截至 2026-09-09，已重点学习：A1、A2、A3、A5。
+- 截至 2026-09-10，已重点学习：A1、A2、A3、A5。
 - A6 正在学习，尚未看完。
 - 除上述章节外，其他章节尚未开始系统学习。
 
@@ -16,7 +16,7 @@
 | [A1：简介](ARM_IHI_0022H_AMBA_AXI_and_ACE_Protocol_Specification_A1.md) | 按 PDF 原文顺序制作 A1.1～A1.3.4 全文中英双语对照，含 3 张原图双语重绘和 6 张补充结构/时序图（包括寄存器切片结构图） | 已完成（全文双语稿） |
 | [AXI 写事务动态时序演示](axi-write-timing-demo.html) | AXI 动态时序图的交互原型；后续以此为统一基础，扩展读写事务、握手、背压、突发传输和多笔未完成事务等时序场景 | 原型阶段 |
 | [README 翻译文档制作规范](README写作规范.md) | 规定忠实翻译、全文双语例外、英文术语括注、补充图边界、draw.io 重绘和逐项验收方法 | 已更新（A5 起执行） |
-| [A2：AXI 接口信号导读](ARM_IHI_0022H_AMBA_AXI_and_ACE_Protocol_Specification_A2.md) | 按原文六节介绍全局信号和五通道，结合时序图解释读写及握手 | 已完成（旧版学习导读） |
+| [A2：信号说明](ARM_IHI_0022H_AMBA_AXI_and_ACE_Protocol_Specification_A2.md) | 按 PDF 原文顺序完整翻译 A2.1～A2.6，含表 A2-1～表 A2-6 的 draw.io 中文重绘 | 已完成（忠实翻译稿） |
 | [A3：AXI 单接口要求](ARM_IHI_0022H_AMBA_AXI_and_ACE_Protocol_Specification_A3.md) | 基于新笔记整理：时钟复位、握手依赖、突发地址与字节通道、Regular 属性和响应；含 13 张重绘图及 10 道自测题 | 已完成（旧版学习导读） |
 | [A5：Transaction Identifiers](ARM_IHI_0022H_AMBA_AXI_and_ACE_Protocol_Specification_A5.md) | 按 PDF 原文顺序完整翻译 A5.1、A5.2 及 A5.2.1～A5.2.3，含表 A5-1 的 draw.io 中文重绘 | 已完成（忠实翻译稿） |
 | [A6：AXI 顺序模型](ARM_IHI_0022H_AMBA_AXI_and_ACE_Protocol_Specification_A6.md) | 按 PDF 原文顺序完整翻译 A6.1～A6.8；原章没有图表 | 已完成（忠实翻译稿） |

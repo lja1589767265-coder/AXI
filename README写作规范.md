@@ -4,7 +4,7 @@
 
 本规范用于将 Arm IHI 0022H《AMBA AXI and ACE Protocol Specification》制作成忠实的中文翻译文档。
 
-新规范从 A5 及后续章节开始执行。A1 已按本规范重新制作，并按单章需求采用全文中英双语对照；A2～A3 保留为旧版学习导读，不要求在本次规范更新后立即重做。
+新规范从 A5 及后续章节开始执行。A1 已按本规范重新制作，并按单章需求采用全文中英双语对照；A2 已按本规范重新制作，A3 保留为旧版学习导读。
 
 除另有单章要求外，翻译文档采用“纯中文正文＋关键英文原句”的形式；A1 当前采用全文中英双语对照。正文以适用版本的 Arm 官方规范为唯一内容依据，完整保留原文信息和出现顺序，不增加原文没有的教学讲解、案例、自测题、总结或结论。
 
@@ -145,22 +145,24 @@ image/axi-章节编号/
 
 以下术语默认采用统一译法：
 
-- Master：主设备。
-- Slave：从设备。
+- Master：保留英文 `Master`，不翻译为中文。
+- Slave：保留英文 `Slave`，不翻译为中文。
 - Manager：管理端。
 - Subordinate：从属端。
 - Interconnect：互连。
-- Transaction：事务。
+- Transaction：保留英文 `transaction`，不翻译为中文。
 - Burst：突发传输。
 - Beat：数据拍。
 - Transfer：传输。
-- Outstanding transaction：未完成事务。
+- Outstanding transaction：保留英文 `outstanding transaction`，不翻译为中文。
 - Transaction Identifier：保留英文，可简称为 Transaction ID 或 AXI ID。
 - Byte lane：字节通道。
 - Register slice：寄存器切片。
 - Implementation-defined：由实现定义。
 
-如果适用版本原文使用 Master、Slave，则按原文术语翻译，不主动替换成后续版本的 Manager、Subordinate。
+如果适用版本原文使用 Master、Slave，则直接保留英文 `Master`、`Slave`，不翻译为“主设备”“从设备”，也不主动替换成后续版本的 Manager、Subordinate。
+
+原文使用 transaction 时，在中文正文、标题和图表中直接保留英文 `transaction`；除引用旧稿或说明禁用译法外，不写成“事务”。
 
 ### 5.3 规范强度
 
@@ -205,11 +207,11 @@ image/axi-章节编号/
 5. 原图图题在图片旁保留完整英文原图题。
 6. 不得使用英文摘要、解释或改写来替代原文。
 
-A1 当前采用全文中英双语对照。除非另有明确要求，其他章节仍采用第 5.4 节的“中文正文＋关键英文原句”形式。
+A1 当前采用全文中英双语对照。除非另有明确要求，其他章节（包括 A2）仍采用第 5.4 节的“中文正文＋关键英文原句”形式。
 
 ### 5.6 中文正文中的英文术语括注
 
-中文正文中的重要协议名词可以在首次出现时补充英文，例如 `术语（terminology）`、`未完成事务（outstanding transaction）`、`寄存器切片（register slice）`。
+中文正文中的重要协议名词可以在首次出现时补充英文，例如 `术语（terminology）`、`寄存器切片（register slice）`。`transaction` 和 `outstanding transaction` 按第 5.2 节直接保留英文。
 
 1. 括注使用中文全角括号 `（ ）`。
 2. 英文必须采用原文或已锁定术语表中的准确形式。
@@ -260,7 +262,7 @@ figure-a3-5-read-transaction-dependencies.png
 Markdown 只引用 PNG：
 
 ```markdown
-![表 A5-1：通道事务 ID](image/axi-a5/table-a5-1-channel-transaction-id.png)
+![表 A5-1：通道 transaction ID](image/axi-a5/table-a5-1-channel-transaction-id.png)
 ```
 
 图表的编号、标题和脚注在 draw.io 图面中完整呈现；Markdown 不再使用可见的重复表格或重复图注。
@@ -295,7 +297,7 @@ Markdown 只引用 PNG：
 1. 确认 PDF 文件、Issue、文档 ID 和目标章节页码。
 2. 按页提取章节正文，并建立源内容清单。
 3. 清单依次登记标题、段落、列表、Note、Caution、公式、图、表和脚注。
-4. 建立或更新术语表，先锁定信号、字段、事务类型和规范强度译法。
+4. 建立或更新术语表，先锁定信号、字段、transaction 类型和规范强度译法。
 5. 按清单和原文顺序逐段翻译，不跨段合并。
 6. 对符合第 5.4 节条件的句子附上关键英文原句。
 7. 使用 draw.io 重绘原文图表并导出 PNG。
@@ -339,6 +341,6 @@ Markdown 只引用 PNG：
 6. 未加入原文不存在且未经用户明确要求的教学内容；获准添加的补充图符合第 6.4 节。
 7. README 已更新翻译范围、图表数量、状态和待核对事项。
 
-A1 在 README 中标记为“全文双语稿”，A2～A3 标记为“旧版学习导读”。从 A5 开始的新文档必须遵守本规范。
+A1 在 README 中标记为“全文双语稿”，A2 标记为“忠实翻译稿”，A3 标记为“旧版学习导读”。从 A5 开始的新文档必须遵守本规范。
 
 本文规定翻译制作方法，不授予原规范的复制、发布或再许可权。使用和发布译文时应遵守 Arm 官方文档的许可条款。

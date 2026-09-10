@@ -1,4 +1,4 @@
-![alt text](image.png)# A1：简介 / Introduction
+# A1：简介 / Introduction
 
 > <span style="color:#D9822B;">译文性质：Arm 规范的非官方中英双语对照翻译。</span>
 >
