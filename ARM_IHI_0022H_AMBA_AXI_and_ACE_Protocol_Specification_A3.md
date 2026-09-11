@@ -1,634 +1,1738 @@
-# A3：AXI 单接口要求——从一次握手看懂完整读写与突发地址
+# A3：单接口要求 / Single Interface Requirements
 
-> 阅读对象：已经认识 AXI 五通道，希望开始读波形、写驱动和监视器的初学者。
-> 依据：Arm IHI 0022H《AMBA AXI and ACE Protocol Specification》，Chapter A3 Single Interface Requirements，A3-39～A3-60；正文规则从 A3-40 开始。
-> 范围：覆盖 A3.1～A3.4，以 AXI4 示例串联讲解，单独说明 AXI3 兼容及 Regular 属性的适用范围。
-> 前置知识：数字电路的时钟、复位、地址与数据总线。本文配图全部为教学重绘，不是仿真采集波形。
+> <span style="color:#D9822B;">译文性质：Arm 规范的非官方中英双语对照翻译。</span>
+>
+> <span style="color:#D9822B;">原始文档：Arm IHI 0022H《AMBA AXI and ACE Protocol Specification》。</span>
+>
+> <span style="color:#D9822B;">版本：Issue H，ID040120。</span>
+>
+> <span style="color:#D9822B;">范围：Chapter A3，原文章节页码 A3-39～A3-60。</span>
+>
+> <span style="color:#D9822B;">说明：中文与对应英文原文按原文顺序完整保留；省略每页重复的页眉、页脚、版权行和物理页码。</span>
 
-## 学习目标
+本章说明单个 Master 与 Slave 之间的基本 AXI 协议 transaction 要求。本章包含以下各节：
 
-1. 在时钟采样沿上判断一次通道传输是否发生，并指出等待期间必须保持的信号。
-2. 判断复位退出、读数据返回和写响应产生的时机是否合法。
-3. 区分五通道的独立握手与读写事务的跨通道依赖。
-4. 根据地址、长度、大小和突发类型，计算每拍地址与字节通道。
-5. 判断突发长度、WRAP 对齐、4KB 边界和 WSTRB 是否合法。
-6. 区分逐拍读响应与整笔写响应，并解释报错后为何还要完成剩余数据拍。
+- 时钟与复位，见第 A3-40 页。
+- 基本读写 transaction，见第 A3-41 页。
+- 通道之间的关系，见第 A3-44 页。
+- Transaction 结构，见第 A3-48 页。
 
-## 1. 先认识 A3 要解决的问题
+> **原文（English）**
+>
+> This chapter describes the basic AXI protocol transaction requirements between a single master and slave. It contains the following sections:
+>
+> - Clock and reset on page A3-40
+> - Basic read and write transactions on page A3-41
+> - Relationships between the channels on page A3-44
+> - Transaction structure on page A3-48
 
-AXI（Advanced eXtensible Interface，高级可扩展接口）让地址、数据和响应通过不同通道传递。Master（主设备）发起请求，Slave（从设备）接收请求并返回结果；Interconnect（互连）负责把请求送到对应目标。A3 讨论每个接口处应遵守的规则，也适用于互连两侧的接口，不仅限于两块模块直接连线的情况。
+## A3.1 时钟与复位 / Clock and reset
 
-Transaction（事务）是一笔完整请求及其数据和响应；Burst（突发传输）用一次地址请求描述多拍数据；Beat（数据拍）是数据通道一次成功握手传递的数据。Transfer（传输）还可以指地址或响应通道上的一次握手，不能把每次握手都当作一笔完整事务。
+本节说明实现 AXI 全局时钟信号 `ACLK` 和复位信号 `ARESETn` 的要求。
 
-先看五通道的方向，再把一笔读写放进去。
+> **原文（English）**
+>
+> This section describes the requirements for implementing the AXI global clock and reset signals ACLK and ARESETn.
 
-![五通道方向与角色](image/axi-a3/v2-05-channels.png)
+### A3.1.1 时钟 / Clock
 
-图 1：AXI 五通道与信息方向（教学重绘）
+每个 AXI 接口都有一个时钟信号 `ACLK`。所有输入信号都在 `ACLK` 的上升沿采样。所有输出信号只能在 `ACLK` 的上升沿之后发生变化。
 
-图中 AW（Write Address，写地址）、W（Write Data，写数据）由主设备发出，B（Write Response，写响应）由从设备返回；AR（Read Address，读地址）由主设备发出，R（Read Data，读数据）返回数据及响应。每个通道都由发送方驱动 VALID（有效指示），接收方驱动 READY（接收就绪指示）。
+> **原文（English）**
+>
+> Each AXI interface has a single clock signal, ACLK. All input signals are sampled on the rising edge of ACLK. All output signal changes can only occur after the rising edge of ACLK.
 
-| 通道 | 发送方驱动 | 接收方驱动 |
-| --- | --- | --- |
-| AW | 主设备：`AWVALID` 和地址/控制 | 从设备：`AWREADY` |
-| W | 主设备：`WVALID`、数据、字节使能、末拍标志 | 从设备：`WREADY` |
-| B | 从设备：`BVALID` 和写响应 | 主设备：`BREADY` |
-| AR | 主设备：`ARVALID` 和地址/控制 | 从设备：`ARREADY` |
-| R | 从设备：`RVALID`、数据、响应、末拍标志 | 主设备：`RREADY` |
+<a id="a3-no-combinational-path"></a>
 
-<span style="background-color:#FBC952;color:#4A3410;font-weight:700;">五个通道各自握手，但属于同一笔事务的请求、数据与响应仍有依赖关系。</span>
+Master 和 Slave 接口的输入信号与输出信号之间不得存在组合路径。
 
-依据：A3.2.2，A3-42～A3-43；A3.3，A3-44。
+> **原文（English）**
+>
+> On master and slave interfaces, there must be no combinatorial paths between input and output signals.
 
-## 2. A3.1：时钟与复位——先确定在哪一刻判断
+![补充图：接口输入与输出之间不得存在组合路径](image/axi-a3/supplemental-no-combinational-input-output-path.png)
 
-### 2.1 读图：一次复位退出后的读地址握手
 
-![时钟复位与读地址握手](image/axi-a3/v2-01-reset.png)
+### A3.1.2 复位 / Reset
 
-图 2：同步退出复位后的读地址握手（教学重绘）
+AXI 协议使用单个低电平有效的复位信号 `ARESETn`。复位信号可以异步置位，但只能与 `ACLK` 的上升沿同步撤销。
 
-1. `T1`、`T2` 采样前，`ARESETn=0`，接口处于复位；五个 VALID 都为 0。
-2. `T2` 上升沿触发复位同步释放，图中在沿后画出 `ARESETn` 变高。`T3` 是随后确认复位已高的上升沿，主设备在 `T3` 沿后提供地址并拉高 `ARVALID`。
-3. `T4` 时 `ARVALID=1`、`ARREADY=0`，没有传输，地址必须继续保持。
-4. `T5` 时两者均为 1，地址传输一次；主设备可在该沿之后撤销 `ARVALID` 或提供下一笔地址。本图随后撤销。
+> **原文（English）**
+>
+> The AXI protocol uses a single active-LOW reset signal, ARESETn. The reset signal can be asserted asynchronously, but deassertion can only be synchronous with a rising edge of ACLK.
 
-这里仅展示地址阶段，R 数据响应在图外返回；不能把 `T5` 解释成整笔读事务已经结束。图中的 `ARREADY` 复位值是示例选择，不是协议要求。
+> <strong style="color:#D9822B;">思考：为什么复位可以异步置位，却必须与 <code style="color:#D9822B;">ACLK</code> 的上升沿同步释放？</strong> [查看《复位同步释放专题》](README_复位同步释放.md)
 
-### 2.2 时钟与复位的通用规则
 
-ACLK 是 AXI 接口时钟；ARESETn 是 AXI 低有效复位，后缀 `n` 表示低电平有效。
+复位期间适用以下接口要求：
 
-1. <span style="background-color:#FBC952;color:#4A3410;font-weight:700;">输入在 ACLK 上升沿采样；正常运行的输出变化只能发生在上升沿之后。</span>
-2. 主设备、从设备接口的输入与输出之间不能有组合逻辑通路。因此，“READY 可以等待 VALID”描述的是协议依赖许可，不表示可以直接组合连接两者。
-3. 复位允许异步置为有效，释放必须与 `ACLK` 上升沿同步。异步复位动作应与正常时钟驱动的信号更新区分。
-4. 复位期间主设备必须将 `ARVALID/AWVALID/WVALID` 拉低，从设备必须将 `RVALID/BVALID` 拉低；其他信号没有统一的复位取值要求。
-5. 主设备最早只能在 `ARESETn` 已经为高之后的上升沿开始驱动 VALID 为高，不能在复位仍有效时发出请求。
+- Master 接口必须将 `ARVALID`、`AWVALID` 和 `WVALID` 驱动为 LOW。
+- Slave 接口必须将 `RVALID` 和 `BVALID` 驱动为 LOW。
+- 所有其他信号可以驱动为任意值。
 
-依据：A3.1.1～A3.1.2，A3-40。
+> **原文（English）**
+>
+> During reset the following interface requirements apply:
+>
+> - A master interface must drive ARVALID, AWVALID, and WVALID LOW.
+> - A slave interface must drive RVALID and BVALID LOW.
+> - All other signals can be driven to any value.
 
-## 3. A3.2：VALID / READY——握手只看采样沿
+![补充时序图：复位期间的 AXI 接口信号要求](image/axi-a3/supplemental-reset-valid-requirements.png)
 
-### 3.1 VALID 先到：等待不等于多次传输
 
-![VALID 先到与载荷稳定](image/axi-a3/v2-02-valid-first.png)
+复位后，允许 Master 开始将 `ARVALID`、`AWVALID` 或 `WVALID` 驱动为 HIGH 的最早时刻，是 `ARESETn` 为 HIGH 之后的一个 `ACLK` 上升沿。图 A3-1 展示了复位后可将 `ARVALID`、`AWVALID` 或 `WVALID` 驱动为 HIGH 的最早时刻。
 
-图 3：VALID 先到，等待期间载荷保持（教学重绘）
+> **原文（English）**
+>
+> The earliest point after reset that a master is permitted to begin driving ARVALID, AWVALID, or WVALID HIGH is at a rising ACLK edge after ARESETn is HIGH. Figure A3-1 shows the earliest point after reset that ARVALID, AWVALID, or WVALID, can be driven HIGH.
 
-1. `T1` 沿后，发送方提供载荷 A 并拉高 VALID。
-2. `T2`、`T3` 都只有 VALID 为 1，接收方没有接收；A 必须保持，不能换成下一份信息。
-3. `T4` 两者均为 1，A 成功传输一次。A 虽跨越多个周期，成功握手只有一次。
 
-Payload（载荷）指该通道本次发送的全部地址、数据或控制字段。在 W 通道，等待时不仅 `WDATA` 不能变，`WSTRB`、`WLAST` 也要保持；R 通道同样包括 `RDATA`、`RRESP`、`RLAST` 及适用的 ID（Identifier，事务标识）。
+![图 A3-1：退出复位](image/axi-a3/figure-a3-1-exit-from-reset.png)
 
-<span style="background-color:#FBC952;color:#4A3410;font-weight:700;">VALID 一旦拉高，就必须连同当前载荷保持到成功握手；等待期间不能撤销或替换当前拍。</span>
+> **原文图题（English）**：Figure A3-1 Exit from reset
 
-### 3.2 READY 先到：先声明接收能力
+## A3.2 基本读写 transaction / Basic read and write transactions
 
-![READY 先到](image/axi-a3/v2-03-ready-first.png)
+本节定义 AXI 协议 transaction 的基本机制。这些基本机制为：
 
-图 4：接收方先就绪（教学重绘）
+- 握手过程。
+- 通道信号要求，见第 A3-42 页。
 
-1. `T2` 时 READY 已为 1，但 VALID 为 0，没有传输。
-2. `T2` 沿后，发送方提供 A 并拉高 VALID；`T3` 完成一次握手。
+> **原文（English）**
+>
+> This section defines the basic mechanisms for AXI protocol transactions. The basic mechanisms are:
+>
+> - The Handshake process
+> - The Channel signaling requirements on page A3-42
 
-READY 可以先拉高，也可以在尚未出现 VALID 时撤销。它不承担“必须保持到将来某次传输”的义务；但在某个采样沿两者均为 1 时，接收方就必须接收本次信息。
+### A3.2.1 握手过程 / Handshake process
 
-### 3.3 同时就绪与连续传输
+全部五个 transaction 通道都使用相同的 `VALID/READY` 握手过程来传输地址、数据和控制信息。这种双向流控机制意味着 Master 和 Slave 都可以控制信息在两者之间移动的速率。源端生成 `VALID` 信号，指示地址、数据或控制信息何时可用。目的端生成 `READY` 信号，指示其可以接收该信息。只有 `VALID` 和 `READY` 信号同时为 HIGH 时才发生传输。
 
-![同时就绪及连续两拍](image/axi-a3/v2-04-together.png)
+> **原文（English）**
+>
+> All five transaction channels use the same VALID/READY handshake process to transfer address, data, and control information. This two-way flow control mechanism means both the master and slave can control the rate that the information moves between master and slave. The source generates the VALID signal to indicate when the address, data, or control information is available. The destination generates the READY signal to indicate that it can accept the information. Transfer occurs only when both the VALID and READY signals are HIGH.
 
-图 5：同时就绪后连续传输两份载荷（教学重绘）
 
-1. `T1` 沿后双方都就绪，`T2` 传输 A。
-2. `T2` 沿后发送方换成 B，VALID 保持高；`T3` 传输 B。
-3. `T3` 沿后 VALID 降低，后面没有继续传输。
+Master 和 Slave 接口的输入信号与输出信号之间不得存在组合路径。
 
-<span style="background-color:#FBC952;color:#4A3410;font-weight:700;">VALID 不需要在两次握手之间先降为 0；连续每个采样沿满足 VALID 与 READY 同为 1，就连续传输。</span>
+<span style="color:#D9822B;">该要求的原因与结构示意见</span>[前文讲解](#a3-no-combinational-path)<span style="color:#D9822B;">。</span>
 
-三种时序都使用同一个判断表达式。下面的表达式应在 `ACLK` 上升沿求值：
+> **原文（English）**
+>
+> On master and slave interfaces, there must be no combinatorial paths between input and output signals.
 
-```systemverilog
-transfer = VALID && READY;
-```
 
-它只表示本通道本次传输，不自动代表整个读写事务完成。
+图 A3-2 至图 A3-4 展示了握手过程的示例。
 
-依据：A3.2.1，A3-41～A3-42。
+> **原文（English）**
+>
+> Figure A3-2 to Figure A3-4 on page A3-42 show examples of the handshake process.
 
-### 3.4 依赖方向与五通道的具体要求
+如图 A3-2 所示，源端在 T1 之后给出信息并置位 `VALID` 信号。目的端在 T2 之后置位 `READY` 信号。源端必须保持其信息稳定，直到 T3 发生传输，即该置位状态被识别之时。
 
-1. <span style="background-color:#FBC952;color:#4A3410;font-weight:700;">发送方不能等待对应 READY 才产生 VALID；接收方可以等待 VALID 再产生 READY。</span>
-2. AW、AR 只有在地址及控制有效时才能拉高 VALID；W、R 只有在当前数据有效时才能拉高 VALID；B 只有在响应有效时才能拉高 VALID。
-3. 规范推荐 `AWREADY/ARREADY` 默认高，以减少等待开销；这是推荐，不是必须恒高。
-4. `WREADY/BREADY/RREADY` 可以默认高，前提是接收方确实能立即接受相应数据或响应。READY 不能虚报接收能力。
-5. 最后一拍写数据必须带 `WLAST=1`，最后一拍读数据必须带 `RLAST=1`。LAST 是随数据拍一起握手的末拍标志，不是独立的结束脉冲。
-6. 即使从设备只有一种读数据来源，也不能无请求主动拉高 RVALID。规范推荐将不参与传输的读写字节通道数据置零，但这不是有效数据的判断依据。
+> **原文（English）**
+>
+> The source presents information after T1 and asserts the VALID signal as shown in Figure A3-2. The destination asserts the READY signal after T2. The source must keep its information stable until the transfer occurs at T3, when this assertion is recognized.
 
-Backpressure（反压）指接收方用 READY 为低暂缓接收。没有超时上限的基本握手规则不等于系统可以无限等待；超时策略需要由具体系统另外定义。
 
-依据：A3.2.2，A3-42～A3-43；A3.3.1，A3-44。
+![图 A3-2：VALID 先于 READY 的握手](image/axi-a3/figure-a3-2-valid-before-ready-handshake.png)
 
-## 4. A3.3：通道之间——可以独立走，但不能乱返回
+> **原文图题（English）**：Figure A3-2 VALID before READY handshake
 
-### 4.1 AW 与 W 的三种先后顺序
+源端不允许等到 `READY` 置位后才置位 `VALID`。
 
-下面三图均是 AXI4 单拍写，地址、写数据和写响应各握手一次。AW 和 W 的载荷在各自 VALID 有效期间保持；图中固定 `AWLEN=0`，唯一数据拍就是末拍，数据和地址的具体数值不影响先后关系。
+> **原文（English）**
+>
+> A source is not permitted to wait until READY is asserted before asserting VALID.
 
-![AW 先到](image/axi-a3/v2-06-write-aw-first.png)
+![补充时序图：VALID 不得等待 READY](image/axi-a3/supplemental-valid-must-not-wait-for-ready.png)
 
-图 6：AW 先于 W 握手（教学重绘）
+<span style="color:#D9822B;">原因：AXI 允许目的端等待 <code style="color:#D9822B;">VALID</code> 置位后再置位 <code style="color:#D9822B;">READY</code>。如果源端也等待 <code style="color:#D9822B;">READY</code> 才置位 <code style="color:#D9822B;">VALID</code>，双方就可能一直保持 LOW，形成互相等待，握手永远无法开始。因此，源端必须独立于 <code style="color:#D9822B;">READY</code> 产生 <code style="color:#D9822B;">VALID</code>。</span>
 
-1. `T2` 地址被接收，`T3` 接收末拍写数据。
-2. `T4` 响应已经有效，但 `BREADY=0`，响应保持。
-3. `T5` 写响应被接收，本笔写事务在接口处完成。
 
-![W 先到](image/axi-a3/v2-07-write-w-first.png)
+`VALID` 一旦置位，就必须保持置位，直到在某个 `VALID` 与 `READY` 同时置位的时钟上升沿发生握手。
 
-图 7：W 先于 AW 握手（教学重绘）
+> **原文（English）**
+>
+> When VALID is asserted, it must remain asserted until the handshake occurs, at a rising clock edge when VALID and READY are both asserted.
 
-1. `T2` 从设备先接收唯一写数据拍，`T3` 才接收地址。
-2. 从设备具备暂存这份数据的能力；收到末拍数据并不允许它绕过地址接收条件提前返回 AXI4 写响应。
-3. `T4` 等待响应接收，`T5` 完成 B 握手。
 
-![AW 与 W 同拍](image/axi-a3/v2-08-write-together.png)
+在图 A3-3 中，目的端在 T1 之后、地址、数据或控制信息有效之前置位 `READY`。该置位表示目的端可以接收信息。源端在 T2 之后给出信息并置位 `VALID`，随后在 T3 该置位状态被识别时发生传输。在此情况下，传输在一个周期内完成。
 
-图 8：AW 与 W 在同一采样沿握手（教学重绘）
+> **原文（English）**
+>
+> In Figure A3-3 the destination asserts READY after T1, before the address, data, or control information is valid. This assertion indicates that it can accept the information. The source presents the information and asserts VALID after T2, then the transfer occurs at T3, when this assertion is recognized. In this case, transfer occurs in a single cycle.
 
-1. `T2` 两个独立通道都完成握手。
-2. 本例从设备在 `T3` 沿后产生 BVALID，`T4` 等待，`T5` 完成响应。这里插入的处理延迟是示例选择；条件满足后，也可以更早产生响应。
+![图 A3-3：READY 先于 VALID 的握手](image/axi-a3/figure-a3-3-ready-before-valid-handshake.png)
 
-<span style="background-color:#FBC952;color:#4A3410;font-weight:700;">AXI 不要求 AW 一定先于 W；AXI4 的 BVALID 必须在对应 AW 握手和带 WLAST 的末拍 W 握手都完成之后产生。</span>
+> **原文图题（English）**：Figure A3-3 READY before VALID handshake
 
-不同通道可能经过不同数量的 Register Slice（寄存器切片，用寄存器分段传递接口信号），因此数据可能比地址更早到达。互连需要根据地址选择从设备时，必须重新配对地址与数据，只向正确目标发送有效写数据。通道独立不能省掉路由和配对。
+允许目的端等待 `VALID` 置位后再置位相应的 `READY`。
 
-### 4.2 两拍读：最后一拍被反压
+> **原文（English）**
+>
+> A destination is permitted to wait for VALID to be asserted before asserting the corresponding READY.
 
-![完整两拍读事务](image/axi-a3/v2-09-read.png)
 
-图 9：地址握手、两拍读数据及末拍反压（教学重绘）
+如果 `READY` 已置位，则允许在 `VALID` 置位之前撤销 `READY`。
 
-1. `T2` 完成 AR 握手，从设备随后提供第一拍 D0。
-2. `T3` 接收 D0；它不是末拍，`RLAST=0`。
-3. `T4`、`T5` 的 `RREADY=0`，D1 和 `RLAST=1` 保持；此时不能增加已接收拍数。
-4. `T6` 接收 D1，带末拍标志的读数据握手使这笔两拍读事务完成。
+> **原文（English）**
+>
+> If READY is asserted, it is permitted to deassert READY before VALID is asserted.
 
-<span style="background-color:#FBC952;color:#4A3410;font-weight:700;">RVALID 只能在对应读地址握手之后产生，且不能等待 RREADY 才产生；RLAST 只有随末拍成功握手才表示读突发完成。</span>
 
-### 4.3 防死锁规则与版本差异
+在图 A3-4 中，源端和目的端都恰好在 T1 之后表明它们可以传输地址、数据或控制信息。在此情况下，传输发生在能够识别 `VALID` 与 `READY` 同时置位的时钟上升沿。因此，传输发生在 T2。
 
-Deadlock（死锁）是双方都在等对方先动作，导致事务无法继续。
+> **原文（English）**
+>
+> In Figure A3-4, both the source and destination happen to indicate that they can transfer the address, data, or control information after T1. In this case, the transfer occurs at the rising clock edge when the assertion of both VALID and READY can be recognized. These assertions means that the transfer occurs at T2.
 
-1. 主设备的 `AWVALID/WVALID` 不能以从设备的 `AWREADY/WREADY` 为前提。例如主设备等 AWREADY 才给 WVALID，而从设备等 WVALID 才给 AWREADY，就会形成死锁。
-2. 从设备允许等待 `AWVALID`、`WVALID` 或两者后才给 `AWREADY/WREADY`，也允许提前就绪。
-3. 从设备不能等待 `BREADY` 才拉高 BVALID；主设备可以等待 BVALID 才拉高 BREADY。读通道对应的 AR、R 依赖规则同理。
-4. 发出写请求后，主设备必须能够提供该事务的全部写数据，不能依赖自己另一笔事务先完成；发出读请求后，也必须能够接收其全部读数据，不能造成跨事务循环等待。
-5. 相同 ID 的读数据返回顺序可以作为主设备安排接收资源的依据；不同 ID 的接收资源和排序需要相应处理，详见 A5。
+![图 A3-4：VALID 与 READY 同时握手](image/axi-a3/figure-a3-4-valid-with-ready-handshake.png)
 
-| 版本 | 对 BVALID 的关键依赖 | 兼容含义 |
-| --- | --- | --- |
-| AXI3 | 必须已经接收末拍写数据 | A3 的旧依赖图没有额外明确要求地址先被接收 |
-| AXI4、AXI5 | 地址握手及末拍数据握手均已完成 | 两个条件都要属于对应事务 |
+> **原文图题（English）**：Figure A3-4 VALID with READY handshake
 
-旧 AXI3 从设备若在接收地址前就返回响应，需要 Wrapper（适配封装）延迟响应，确保该地址已被从设备接收，才能满足新版本要求。规范也强烈推荐新 AXI3 从设备采用这项附加依赖。AXI3 主设备满足这里的 AXI4/AXI5 写响应要求，不代表其他信号差异无需适配。
+各个 AXI 协议通道的握手机制在“通道信号要求”中说明。
 
-AXI4/AXI5 从设备发出写响应意味着承担对后续事务的相关冲突检查责任；响应不必然等于数据已写入最终存储介质，具体完成保证还涉及 A4 属性。
+> **原文（English）**
+>
+> The individual AXI protocol channel handshake mechanisms are described in Channel signaling requirements.
 
-原文依赖图的单箭头表示允许前后任意顺序，双箭头表示必须等待前置条件；不能把所有箭头都读成固定流水线时序。
+### A3.2.2 通道信号要求 / Channel signaling requirements
 
-依据：A3.3～A3.3.2，A3-44～A3-47。
+以下各节定义每个通道的握手信号和握手规则：
 
-## 5. A3.4.1：事务结构——一次地址描述多拍数据
+- 通道握手信号。
+- 写地址通道。
+- 写数据通道，见第 A3-43 页。
+- 写响应通道，见第 A3-43 页。
+- 读地址通道，见第 A3-43 页。
+- 读数据通道，见第 A3-43 页。
 
-`AxADDR/AxLEN/AxSIZE/AxBURST` 中的 `x` 代表 W 或 R，例如 AxLEN 代表 AWLEN 或 ARLEN，不是另一套物理信号。
+> **原文（English）**
+>
+> The following sections define the handshake signals and the handshake rules for each channel:
+>
+> - Channel handshake signals
+> - Write address channel
+> - Write data channel on page A3-43
+> - Write response channel on page A3-43
+> - Read address channel on page A3-43
+> - Read data channel on page A3-43
 
-### 5.1 长度、大小与类型
+#### 通道握手信号 / Channel handshake signals
 
-| 字段 | 解码方式 | 示例 |
-| --- | --- | --- |
-| `AxLEN` | 数据拍数为编码值加 1 | `3` 表示 4 拍，`0` 表示 1 拍 |
-| `AxSIZE` | 每拍最大字节数为 `2 ** AxSIZE` | `2` 表示最大 4 Byte/拍 |
-| `AxBURST` | `00` FIXED，`01` INCR，`10` WRAP | `11` 保留，不是第四种突发 |
+每个通道都有自己的 `VALID/READY` 握手信号对。表 A3-1 给出了每个通道的信号。
 
-Byte（字节）为 8 bit（位）。AxSIZE 的 3 位编码 `0～7` 依次表示 `1、2、4、8、16、32、64、128` 字节；传输大小不能超过事务任一端的数据总线宽度。
+> **原文（English）**
+>
+> Each channel has its own VALID/READY handshake signal pair. Table A3-1 shows the signals for each channel.
 
-<span style="background-color:#FBC952;color:#4A3410;font-weight:700;">AxSIZE 是每拍最大传输字节数，不保证每拍都写这么多字节；非对齐首拍和 WSTRB 都可能减少有效字节。</span>
+![表 A3-1：Transaction 通道握手信号对](image/axi-a3/table-a3-1-transaction-channel-handshake-pairs.png)
 
-| 版本 / 类型 | 合法拍数 | 编码注意 |
-| --- | --- | --- |
-| AXI3 | INCR、FIXED 为 1～16，WRAP 为 2/4/8/16 | LEN 使用 4 位 |
-| AXI4 INCR | 1～256 | LEN 使用 8 位 |
-| AXI4 FIXED | 1～16 | 不能因为 LEN 是 8 位就使用 256 拍 |
-| AXI4 WRAP | 2、4、8、16 | 起始地址还必须按每拍大小对齐 |
+> **原文表题（English）**：Table A3-1 Transaction channel handshake pairs
 
-FIXED（固定地址突发）重复访问同一地址，适合 FIFO（First In First Out，先进先出队列）。INCR（Incrementing，递增突发）用于顺序地址。WRAP（Wrapping，回绕突发）在固定窗口内回到低地址，常用于缓存行访问。
+#### 写地址通道 / Write address channel
 
-### 5.2 从具体地址看三种规则
+仅当 Master 正在驱动有效的地址和控制信息时，才可以置位 `AWVALID` 信号。`AWVALID` 一旦置位，就必须保持置位，直到 Slave 置位 `AWREADY` 之后的时钟上升沿。
 
-![突发类型与地址计算](image/axi-a3/v2-10-addresses.png)
+> **原文（English）**
+>
+> The master can assert the AWVALID signal only when it drives valid address and control information. When asserted, AWVALID must remain asserted until the rising clock edge after the slave asserts AWREADY.
 
-图 10：三种突发及非对齐 INCR 的逐拍地址（教学重绘）
+`AWREADY` 的默认状态可以是 HIGH 或 LOW。本规范建议默认状态为 HIGH。当 `AWREADY` 为 HIGH 时，Slave 必须能够接收向其给出的任何有效地址。
 
-先比较前三行：同样 4 拍、最大 4 字节/拍，FIXED 不移动，INCR 向高地址走，WRAP 则在 16 字节窗口内回绕。WRAP 从 `0x100C` 开始，窗口为 `0x1000～0x100F`；下一拍回到 `0x1000`，不访问 `0x1010`。
+> **原文（English）**
+>
+> The default state of AWREADY can be either HIGH or LOW. This specification recommends a default state of HIGH. When AWREADY is HIGH, the slave must be able to accept any valid address that is presented to it.
 
-最后一行的起点是 `0x1001`，第二拍为 `0x1004`，不是 `0x1005`。后续地址从对齐后的边界计算。
 
-为便于手算，定义 `S` 为起始地址、`B` 为每拍最大字节数、`L` 为拍数、`A` 为向下对齐地址、`C` 为容器大小。下面所有除法向下取整，`n` 从 1 开始：
+> **注（Note）**
+>
+> 本规范不建议将 `AWREADY` 的默认状态设为 LOW，因为这会迫使传输至少占用两个周期：一个周期置位 `AWVALID`，另一个周期置位 `AWREADY`。
+
+> **原文（English）**
+>
+> This specification does not recommend a default AWREADY state of LOW, because it forces the transfer to take at least two cycles, one to assert AWVALID and another to assert AWREADY.
+
+![补充时序图：AWVALID 等待 AWREADY 时保持地址和控制信息](image/axi-a3/supplemental-awvalid-hold-until-awready.png)
+
+#### 写数据通道 / Write data channel
+
+在写突发传输期间，仅当 Master 正在驱动有效写数据时，才可以置位 `WVALID` 信号。`WVALID` 一旦置位，就必须保持置位，直到 Slave 置位 `WREADY` 之后的时钟上升沿。
+
+> **原文（English）**
+>
+> During a write burst, the master can assert the WVALID signal only when it drives valid write data. When asserted, WVALID must remain asserted until the rising clock edge after the slave asserts WREADY.
+
+
+`WREADY` 的默认状态可以是 HIGH，但前提是 Slave 始终能够在单个周期内接收写数据。
+
+> **原文（English）**
+>
+> The default state of WREADY can be HIGH, but only if the slave can always accept write data in a single cycle.
+
+
+Master 在驱动突发传输中的最后一次写传输时，必须置位 `WLAST` 信号。
+
+> **原文（English）**
+>
+> The master must assert the WLAST signal while it is driving the final write transfer in the burst.
+
+
+本规范建议，对于不活动的字节通道，将 `WDATA` 驱动为零。
+
+> **原文（English）**
+>
+> This specification recommends that WDATA is driven to zero for inactive byte lanes.
+
+![补充时序图：写数据通道的保持、反压、末拍和不活动字节](image/axi-a3/supplemental-wchannel-requirements.png)
+
+#### 写响应通道 / Write response channel
+
+仅当 Slave 正在驱动有效写响应时，才可以置位 `BVALID` 信号。`BVALID` 一旦置位，就必须保持置位，直到 Master 置位 `BREADY` 之后的时钟上升沿。
+
+> **原文（English）**
+>
+> The slave can assert the BVALID signal only when it drives a valid write response. When asserted, BVALID must remain asserted until the rising clock edge after the master asserts BREADY.
+
+
+`BREADY` 的默认状态可以是 HIGH，但前提是 Master 始终能够在单个周期内接收写响应。
+
+> **原文（English）**
+>
+> The default state of BREADY can be HIGH, but only if the master can always accept a write response in a single cycle.
+
+![补充时序图：写响应的保持、反压与握手](image/axi-a3/supplemental-bchannel-requirements.png)
+
+
+#### 读地址通道 / Read address channel
+
+仅当 Master 正在驱动有效的地址和控制信息时，才可以置位 `ARVALID` 信号。`ARVALID` 一旦置位，就必须保持置位，直到 Slave 置位 `ARREADY` 信号之后的时钟上升沿。
+
+> **原文（English）**
+>
+> The master can assert the ARVALID signal only when it drives valid address and control information. When asserted, ARVALID must remain asserted until the rising clock edge after the slave asserts the ARREADY signal.
+
+
+`ARREADY` 的默认状态可以是 HIGH 或 LOW。本规范建议默认状态为 HIGH。如果 `ARREADY` 为 HIGH，则 Slave 必须能够接收向其给出的任何有效地址。
+
+> **原文（English）**
+>
+> The default state of ARREADY can be either HIGH or LOW. This specification recommends a default state of HIGH. If ARREADY is HIGH, then the slave must be able to accept any valid address that is presented to it.
+
+
+> **注（Note）**
+>
+> 本规范不建议将 `ARREADY` 的默认值设为 LOW，因为这会迫使传输至少占用两个周期：一个周期置位 `ARVALID`，另一个周期置位 `ARREADY`。
+
+> **原文（English）**
+>
+> This specification does not recommend a default ARREADY value of LOW, because it forces the transfer to take at least two cycles, one to assert ARVALID and another to assert ARREADY.
+
+![补充时序图：读地址的保持、反压与握手](image/axi-a3/supplemental-archannel-requirements.png)
+
+#### 读数据通道 / Read data channel
+
+仅当 Slave 正在驱动有效读数据时，才可以置位 `RVALID` 信号。`RVALID` 一旦置位，就必须保持置位，直到 Master 置位 `RREADY` 之后的时钟上升沿。即使 Slave 只有一个读数据源，也必须仅为响应数据请求而置位 `RVALID` 信号。
+
+> **原文（English）**
+>
+> The slave can assert the RVALID signal only when it drives valid read data. When asserted, RVALID must remain asserted until the rising clock edge after the master asserts RREADY. Even if a slave has only one source of read data, it must assert the RVALID signal only in response to a request for data.
+
+
+Master 接口使用 `RREADY` 信号指示其接收数据。`RREADY` 的默认状态可以是 HIGH，但前提是 Master 能够在开始读 transaction 时立即接收读数据。
+
+> **原文（English）**
+>
+> The master interface uses the RREADY signal to indicate that it accepts the data. The default state of RREADY can be HIGH, but only if the master is able to accept read data immediately when it starts a read transaction.
+
+
+Slave 在驱动突发传输中的最后一次读传输时，必须置位 `RLAST` 信号。
+
+> **原文（English）**
+>
+> The slave must assert the RLAST signal when it is driving the final read transfer in the burst.
+
+
+本规范建议，对于不活动的字节通道，将 `RDATA` 驱动为零。
+
+> **原文（English）**
+>
+> This specification recommends that RDATA is driven to zero for inactive byte lanes.
+
+![补充时序图：读数据的保持、反压、末拍和不活动字节](image/axi-a3/supplemental-rchannel-requirements.png)
+
+## A3.3 通道之间的关系 / Relationships between the channels
+
+AXI 协议要求保持以下关系：
+
+- 写响应必须始终在写 transaction 的最后一次写传输之后。
+- 读数据必须始终在该数据的读地址之后。
+- 通道握手必须符合“通道握手信号之间的依赖关系”中定义的依赖关系。
+
+> **原文（English）**
+>
+> The AXI protocol requires the following relationships to be maintained:
+>
+> - A write response must always follow the last write transfer in a write transaction.
+> - Read data must always follow the read address of the data.
+> - Channel handshakes must conform to the dependencies defined in Dependencies between channel handshake signals.
+
+![补充时序图：4 拍写数据完成后返回写响应](image/axi-a3/supplemental-multi-beat-write-response.png)
+
+![补充时序图：读地址握手后返回两拍读数据](image/axi-a3/supplemental-read-data-after-address.png)
+
+协议没有定义通道之间的任何其他关系。
+
+> **原文（English）**
+>
+> The protocol does not define any other relationship between the channels.
+
+
+缺少其他关系意味着，例如，一个 transaction 的写数据可能先于写地址出现在接口上。如果写地址通道包含的寄存器级数多于写数据通道，就可能出现这种情况。同样，写数据也可能与地址出现在同一周期。
+
+> **原文（English）**
+>
+> The lack of relationship means, for example, that the write data can appear at an interface before the write address for the transaction. This can occur if the write address channel contains more register stages than the write data channel. Similarly, the write data might appear in the same cycle as the address.
+
+> **注（Note）**
+>
+> 当互连需要确定目的地址空间或 Slave 空间时，必须重新对齐地址和写数据。要求进行此重新对齐，是为了确保仅向写数据所要到达的 Slave 表明该写数据有效。
+
+> **原文（English）**
+>
+> When the interconnect is required to determine the destination address space or slave space, it must realign the address and write data. This realignment is required to assure that the write data is signaled as being valid only to the slave that it is destined for.
+
+
+Master 发出写请求时，必须能够提供该 transaction 的所有写数据，并且不依赖该 Master 的其他 transaction。
+
+> **原文（English）**
+>
+> When a master issues a write request, it must be able to provide all write data for that transaction, without dependency on other transactions from that master.
+
+
+Master 发出读请求时，必须能够接收该 transaction 的所有读数据，并且不依赖该 Master 的其他 transaction。
+
+> **原文（English）**
+>
+> When a master issues a read request, it must be able to accept all read data for that transaction, without dependency on other transactions from that master.
+>
+
+
+请注意，Master 可以依赖使用相同 ID 的 transaction 按顺序返回读数据，因此 Master 只需为不同 ID 的 transaction 所返回的读数据准备足够的存储空间。
+
+> **原文（English）**
+>
+> Note that a master can rely on read data returning in order from transactions that use the same ID, so the master only needs enough storage for read data from transactions with different IDs.
+
+### A3.3.1 通道握手信号之间的依赖关系 / Dependencies between channel handshake signals
+
+为防止死锁，必须遵守握手信号之间存在的依赖规则。
+
+> **原文（English）**
+>
+> To prevent a deadlock situation, the dependency rules that exist between the handshake signals must be observed.
+
+
+如第 A3-42 页“通道信号要求”所概述，在任何 transaction 中：
+
+- 发送信息的 AXI 接口，其 `VALID` 信号不得依赖接收该信息的 AXI 接口的 `READY` 信号。
+- 接收信息的 AXI 接口可以等到检测到 `VALID` 信号后，再置位相应的 `READY` 信号。
+
+> **原文（English）**
+>
+> As summarized in Channel signaling requirements on page A3-42, in any transaction:
+>
+> - The VALID signal of the AXI interface sending information must not be dependent on the READY signal of the AXI interface receiving that information.
+> - An AXI interface that is receiving information can wait until it detects a VALID signal before it asserts its corresponding READY signal.
+
+
+> **注（Note）**
+>
+> 可以等到 `VALID` 置位后再置位 `READY`。也可以在检测到相应的 `VALID` 之前置位 `READY`。后者可以得到更高效的设计。
+
+> **原文（English）**
+>
+> It is acceptable to wait for VALID to be asserted before asserting READY. It is also acceptable to assert READY before detecting the corresponding VALID. This can result in a more efficient design.
+
+此外，不同通道上的握手信号之间也存在依赖关系，并且 AXI4 定义了一项额外的写响应依赖关系。以下小节定义这些依赖关系：
+
+- 读 transaction 依赖关系，见第 A3-45 页。
+- AXI3 写 transaction 依赖关系，见第 A3-45 页。
+- AXI4 和 AXI5 写 transaction 依赖关系，见第 A3-46 页。
+
+> **原文（English）**
+>
+> In addition, there are dependencies between the handshake signals on different channels, and AXI4 defines an additional write response dependency. The following subsections define these dependencies:
+>
+> - Read transaction dependencies on page A3-45
+> - AXI3 write transaction dependencies on page A3-45
+> - AXI4 and AXI5 write transaction dependencies on page A3-46
+
+在依赖关系图中：
+
+- 单箭头指向的信号可以在箭头起点信号之前或之后置位。
+- 双箭头指向的信号必须仅在箭头起点信号置位之后置位。
+
+> **原文（English）**
+>
+> In the dependency diagrams:
+>
+> - Single-headed arrows point to signals that can be asserted before or after the signal at the start of the arrow.
+> - Double-headed arrows point to signals that must be asserted only after assertion of the signal at the start of the arrow.
+
+
+#### 读 transaction 依赖关系 / Read transaction dependencies
+
+图 A3-5 展示了读 transaction 握手信号的依赖关系，并表明在一次读 transaction 中：
+
+- Master 在置位 `ARVALID` 之前，不得等待 Slave 置位 `ARREADY`。
+- Slave 可以等到 `ARVALID` 置位后再置位 `ARREADY`。
+- Slave 可以在 `ARVALID` 置位之前置位 `ARREADY`。
+- Slave 必须等到 `ARVALID` 和 `ARREADY` 均置位后，才能置位 `RVALID` 以指示有效数据可用。<span style="color:#D9822B;">（Slave 必须先真正接收到一个读地址请求，之后才有资格返回读数据。）</span>
+
+- Slave 在置位 `RVALID` 之前，不得等待 Master 置位 `RREADY`。
+- Master 可以等到 `RVALID` 置位后再置位 `RREADY`。
+- Master 可以在 `RVALID` 置位之前置位 `RREADY`。
+
+> **原文（English）**
+>
+> Figure A3-5 shows the read transaction handshake signal dependencies, and shows that, in a read transaction:
+>
+> - The master must not wait for the slave to assert ARREADY before asserting ARVALID.
+> - The slave can wait for ARVALID to be asserted before it asserts ARREADY.
+> - The slave can assert ARREADY before ARVALID is asserted.
+> - The slave must wait for both ARVALID and ARREADY to be asserted before it asserts RVALID to indicate that valid data is available.
+> - The slave must not wait for the master to assert RREADY before asserting RVALID.
+> - The master can wait for RVALID to be asserted before it asserts RREADY.
+> - The master can assert RREADY before RVALID is asserted.
+
+
+![图 A3-5：读 transaction 握手依赖关系](image/axi-a3/figure-a3-5-read-transaction-handshake-dependencies.png)
+
+> **原文图题（English）**：Figure A3-5 Read transaction handshake dependencies
+
+#### AXI3 写 transaction 依赖关系 / AXI3 write transaction dependencies
+
+图 A3-6 展示了写 transaction 握手信号的依赖关系，并表明在一次写 transaction 中：
+
+- Master 在置位 `AWVALID` 或 `WVALID` 之前，不得等待 Slave 置位 `AWREADY` 或 `WREADY`。
+- Slave 可以等到 `AWVALID` 或 `WVALID` 中任一信号或两者均置位后，再置位 `AWREADY`。
+- Slave 可以在 `AWVALID` 或 `WVALID` 中任一信号或两者均置位之前，置位 `AWREADY`。
+- Slave 可以等到 `AWVALID` 或 `WVALID` 中任一信号或两者均置位后，再置位 `WREADY`。
+- Slave 可以在 `AWVALID` 或 `WVALID` 中任一信号或两者均置位之前，置位 `WREADY`。
+- Slave 必须等到 `WVALID` 和 `WREADY` 均置位后才能置位 `BVALID`。Slave 还必须等到 `WLAST` 置位后才能置位 `BVALID`。之所以需要等待，是因为写响应 `BRESP` 必须仅在写 transaction 的最后一次数据传输之后发出。
+- Slave 在置位 `BVALID` 之前，不得等待 Master 置位 `BREADY`。
+- Master 可以等到 `BVALID` 置位后再置位 `BREADY`。
+- Master 可以在 `BVALID` 置位之前置位 `BREADY`。
+
+> **原文（English）**
+>
+> Figure A3-6 shows the write transaction handshake signal dependencies, and shows that in a write transaction:
+>
+> - The master must not wait for the slave to assert AWREADY or WREADY before asserting AWVALID or WVALID.
+> - The slave can wait for AWVALID or WVALID, or both before asserting AWREADY.
+> - The slave can assert AWREADY before AWVALID or WVALID, or both, are asserted.
+> - The slave can wait for AWVALID or WVALID, or both, before asserting WREADY.
+> - The slave can assert WREADY before AWVALID or WVALID, or both, are asserted.
+> - The slave must wait for both WVALID and WREADY to be asserted before asserting BVALID.
+>   The slave must also wait for WLAST to be asserted before asserting BVALID. Waiting is required because the write response, BRESP, must be signaled only after the last data transfer of a write transaction.
+> - The slave must not wait for the master to assert BREADY before asserting BVALID.
+> - The master can wait for BVALID before asserting BREADY.
+> - The master can assert BREADY before BVALID is asserted.
+
+
+![图 A3-6：AXI3 写 transaction 握手依赖关系](image/axi-a3/figure-a3-6-axi3-write-transaction-handshake-dependencies.png)
+
+> **原文图题（English）**：Figure A3-6 AXI3 write transaction handshake dependencies
+
+> **注意（Caution）**
+>
+> 必须遵守这些依赖规则，以防止死锁。例如，Master 在驱动 `WVALID` 之前不得等待 `AWREADY` 置位。如果 Slave 正在等待 `WVALID` 后才置位 `AWREADY`，就可能发生死锁。
+
+> **原文（English）**
+>
+> The dependency rules must be observed to prevent a deadlock condition. For example, a master must not wait for AWREADY to be asserted before driving WVALID. A deadlock condition can occur if the slave is waiting for WVALID before asserting AWREADY.
+
+
+#### AXI4 和 AXI5 写 transaction 依赖关系 / AXI4 and AXI5 write transaction dependencies
+
+AXI4 和 AXI5 定义了一项额外的 Slave 写响应依赖关系。Slave 必须等到 `AWVALID`、`AWREADY`、`WVALID` 和 `WREADY` 均置位后，才能置位 `BVALID`。通过发出写响应，Slave 对该写 transaction 与后续所有 transaction 之间的冒险检查承担责任。
+
+> **原文（English）**
+>
+> AXI4 and AXI5 define an additional slave write response dependency. The slave must wait for AWVALID, AWREADY, WVALID, and WREADY to be asserted before asserting BVALID. By issuing a write response, the slave takes responsibility for hazard checking the write transaction against all subsequent transactions.
+
+
+> **注（Note）**
+>
+> 这项额外依赖关系反映了 AXI3 中的预期使用方式，因为并不预期任何组件会在地址被接收之前接收所有写数据并给出写响应。
+
+> **原文（English）**
+>
+> This additional dependency reflects the expected use in AXI3, because it is not expected that any components would accept all write data and provide a write response before the address is accepted.
+
+图 A3-7 展示了 AXI4 和 AXI5 要求的全部 Slave 写响应握手依赖关系。单箭头指向的信号可以在前一个信号置位之前或之后置位。双箭头指向的信号必须仅在前一个信号置位之后置位。
+
+> **原文（English）**
+>
+> Figure A3-7 shows all the AXI4 and AXI5 required slave write response handshake dependencies. The single-headed arrows point to signals that can be asserted before or after the previous signal is asserted. Double-headed arrows point to signals that must be asserted only after assertion of the previous signal.
+
+
+这些依赖关系为：
+
+- Master 在置位 `AWVALID` 或 `WVALID` 之前，不得等待 Slave 置位 `AWREADY` 或 `WREADY`。
+- Slave 可以等到 `AWVALID` 或 `WVALID` 中任一信号或两者均置位后，再置位 `AWREADY`。
+- Slave 可以在 `AWVALID` 或 `WVALID` 中任一信号或两者均置位之前，置位 `AWREADY`。
+- Slave 可以等到 `AWVALID` 或 `WVALID` 中任一信号或两者均置位后，再置位 `WREADY`。
+- Slave 可以在 `AWVALID` 或 `WVALID` 中任一信号或两者均置位之前，置位 `WREADY`。
+- Slave 必须等到 `AWVALID`、`AWREADY`、`WVALID` 和 `WREADY` 均置位后，才能置位 `BVALID`。Slave 还必须等到 `WLAST` 置位后才能置位 `BVALID`。之所以等待，是因为写响应 `BRESP` 必须仅在写 transaction 的最后一次数据传输之后发出。
+- Slave 在置位 `BVALID` 之前，不得等待 Master 置位 `BREADY`。
+- Master 可以等到 `BVALID` 置位后再置位 `BREADY`。
+- Master 可以在 `BVALID` 置位之前置位 `BREADY`。
+
+> **原文（English）**
+>
+> These dependencies are:
+>
+> - The master must not wait for the slave to assert AWREADY or WREADY before asserting AWVALID or WVALID.
+> - The slave can wait for AWVALID or WVALID, or both, before asserting AWREADY.
+> - The slave can assert AWREADY before AWVALID or WVALID, or both, are asserted.
+> - The slave can wait for AWVALID or WVALID, or both, before asserting WREADY.
+> - The slave can assert WREADY before AWVALID or WVALID, or both, are asserted.
+> - The slave must wait for AWVALID, AWREADY, WVALID, and WREADY to be asserted before asserting BVALID.
+>   The slave must also wait for WLAST to be asserted before asserting BVALID. This wait is because the write response, BRESP, must be signaled only after the last data transfer of a write transaction.
+> - The slave must not wait for the master to assert BREADY before asserting BVALID.
+> - The master can wait for BVALID before asserting BREADY.
+> - The master can assert BREADY before BVALID is asserted.
+
+
+![图 A3-7：AXI4 和 AXI5 写 transaction 握手依赖关系](image/axi-a3/figure-a3-7-axi4-axi5-write-transaction-handshake-dependencies.png)
+
+> **原文图题（English）**：Figure A3-7 AXI4 and AXI5 write transaction handshake dependencies
+
+### A3.3.2 旧版兼容性考虑 / Legacy considerations
+
+第 A3-46 页“AXI4 和 AXI5 写 transaction 依赖关系”中说明的额外依赖关系意味着：如果某个 AXI3 Slave 在接收地址之前就接收全部写数据并给出写响应，则该 Slave 不符合 AXI4 或 AXI5。将旧版 AXI3 Slave 转换为 AXI4 或 AXI5 需要增加一个封装器。该封装器确保在 Slave 接收相应地址之前，不会提供返回的写响应。
+
+> **原文（English）**
+>
+> The additional dependency that is described in AXI4 and AXI5 write transaction dependencies on page A3-46 means that an AXI3 slave that accepts all write data and provides a write response before accepting the address is not compliant with AXI4 or AXI5. Converting an AXI3 legacy slave to AXI4 or AXI5 requires the addition of a wrapper. That wrapper ensures a returning write response is not provided until the appropriate address has been accepted by the slave.
+
+
+> **注（Note）**
+>
+> 本规范强烈建议任何新的 AXI3 Slave 实现都包含这项额外依赖关系。
+
+> **原文（English）**
+>
+> This specification strongly recommends that any new AXI3 slave implementation includes this additional dependency.
+
+任何 AXI3 Master 都符合 AXI4 和 AXI5 写响应要求。
+
+> **原文（English）**
+>
+> Any AXI3 master complies with the AXI4 and AXI5 write response requirements.
+
+
+## A3.4 Transaction 结构 / Transaction structure
+
+本节说明 transaction 的结构。以下各节定义地址、数据和响应结构：
+
+- 地址结构。
+- 传输的伪代码说明，见第 A3-52 页。
+- 数据读写结构，见第 A3-54 页。
+- 读写响应结构，见第 A3-59 页。
+
+> **原文（English）**
+>
+> This section describes the structure of transactions. The following sections define the address, data, and response structures:
+>
+> - Address structure
+> - Pseudocode description of the transfers on page A3-52
+> - Data read and write structure on page A3-54
+> - Read and write response structure on page A3-59
+
+本节所用术语的定义，见第 Glossary-493 页的“术语表”。
+
+> **原文（English）**
+>
+> For the definitions of terms that are used in this section, see Glossary on page Glossary-493.
+
+### A3.4.1 地址结构 / Address structure
+
+AXI 协议以突发传输为基础。Master 通过向 Slave 驱动控制信息和 transaction 中第一个字节的地址来开始每个突发传输。随着突发传输推进，Slave 必须计算突发传输中后续传输的地址。
+
+> **原文（English）**
+>
+> The AXI protocol is burst-based. The master begins each burst by driving control information and the address of the first byte in the transaction to the slave. As the burst progresses, the slave must calculate the addresses of subsequent transfers in the burst.
+
+
+一次突发传输不得跨越 4KB 地址边界。
+
+> **原文（English）**
+>
+> A burst must not cross a 4KB address boundary.
+
+
+> **注（Note）**
+>
+> 该禁止条件防止一次突发传输跨越两个 Slave 之间的边界。它还限制了 Slave 必须支持的地址递增次数。
+
+> **原文（English）**
+>
+> This prohibition prevents a burst from crossing a boundary between two slaves. It also limits the number of address increments that a slave must support.
+
+> <strong style="color:#D9822B;">思考：为什么 AXI burst 不能跨越 4KB 地址边界？它与 AHB 的 1KB 边界有什么区别？</strong> [查看《AXI 4KB 与 AHB 1KB 突发边界专题》](README_突发传输地址边界.md)
+
+
+#### 突发长度 / Burst length
+
+突发长度由以下信号指定：
+
+- 对于读传输，为 `ARLEN[7:0]`。
+- 对于写传输，为 `AWLEN[7:0]`。
+
+> **原文（English）**
+>
+> The burst length is specified by:
+>
+> - ARLEN[7:0], for read transfers
+> - AWLEN[7:0], for write transfers
+
+在本规范中，`AxLEN` 表示 `ARLEN` 或 `AWLEN`。
+
+> **原文（English）**
+>
+> In this specification, AxLEN indicates ARLEN or AWLEN.
+
+AXI3 对所有突发类型支持 1～16 次传输的突发长度。
+
+> **原文（English）**
+>
+> AXI3 supports burst lengths of 1-16 transfers, for all burst types.
+
+AXI4 将 INCR 突发类型的突发长度支持扩展为 1～256 次传输。AXI4 对所有其他突发类型仍支持 1～16 次传输。
+
+> **原文（English）**
+>
+> AXI4 extends burst length support for the INCR burst type to 1-256 transfers. Support for all other burst types in AXI4 remains at 1-16 transfers.
+
+AXI3 的突发长度定义为：
 
 ```text
-B = 2 ** AxSIZE
-L = AxLEN + 1
-A = floor(S / B) * B
-C = B * L
-W = floor(S / C) * C
-
-FIXED：address(n) = S
-INCR ：address(1) = S
-       address(n) = A + (n - 1) * B，n >= 2
-WRAP ：address(n) = W + ((S - W + (n - 1) * B) mod C)
+Burst_Length = AxLEN[3:0] + 1
 ```
 
-WRAP 公式以合法 WRAP 为前提：`S` 按 B 对齐，L 只能为 `2/4/8/16`。它要求按每拍大小对齐，不要求从回绕窗口最低地址开始。
+> **原文（English）**
+>
+> The burst length for AXI3 is defined as:
+>
+>     Burst_Length = AxLEN[3:0] + 1
 
-Transaction Container（事务容器）表示规范用于描述事务潜在字节范围的窗口，以上界不包含在内的区间表示：INCR 为 `[A, A+C)`；WRAP 为 `[W, W+C)`。不要把容器大小直接当作非对齐事务的实际有效字节数。
-
-### 5.3 4KB 边界与不能提前结束
-
-![4KB 边界案例](image/axi-a3/v2-11-boundary.png)
-
-图 11：按完整地址范围检查 4KB 边界（教学重绘）
-
-第一行最后可能访问 `0x0FFF`，合法；第二行访问到下一页，非法；第三行的非对齐单拍只覆盖 `0x0FFF`，不能用“起点直接加 4 字节”误判跨界。
-
-对合法大小和长度的 INCR，最高可能访问字节是 `A + B*L - 1`；用它与起点比较 4KB 页号。WRAP 检查回绕窗口，FIXED 检查重复访问的同一拍字节范围，不能把 INCR 的累计递增公式直接套到 FIXED。
-
-1. <span style="background-color:#FBC952;color:#4A3410;font-weight:700;">任何突发都不能跨 4KB 地址边界，也不能提前终止。</span>
-2. 不再需要后续写入时，可将后续 WSTRB 全部置 0，但剩余数据拍仍要完成握手，并在真正末拍给 WLAST。
-3. 读数据即使被主设备丢弃，仍必须完成所有数据传输。对读取就弹出的 FIFO，发出多余读取再丢弃会造成数据丢失，因此长度必须精确匹配需求。
-4. AXI4 大于 16 拍的 INCR 可被转换为多个短突发，即使它标记为 Non-modifiable（不可修改事务）；拆分时除长度与相应地址外，要保留原事务特征。这是兼容长突发的规则，不是提前终止许可。
-5. Exclusive Access（独占访问，用于条件式原子更新）还有 A7 规定的附加限制；不能只用本节普通突发条件判断独占访问是否合法。
-
-依据：A3.4.1，A3-48～A3-51。
-
-## 6. A3.4.2：把地址与字节通道计算连起来
-
-Byte Lane（字节通道）是数据总线中固定的 8 位分组。设总线宽度为 D 字节，对某拍地址 `addr`：所在总线字的基址为 `floor(addr/D)*D`，最低有效 lane 为 `addr mod D`。
-
-下面是依据规范重新组织的教学算法，不涉及握手调度。输入需先通过类型、长度、大小、对齐及 4KB 合法性检查；每个输出元素描述一拍允许访问的字节范围。
-
-```python
-def describe_beats(start, size, length, bus_bytes, burst):
-    step = 1 << size
-    aligned_start = (start // step) * step
-    span = step * length
-    wrap_low = (start // span) * span
-    address = start
-    result = []
-    for index in range(length):
-        word_base = (address // bus_bytes) * bus_bytes
-        low_lane = address - word_base
-        high_lane = (address // step) * step + step - 1 - word_base
-        result.append((address, low_lane, high_lane))
-        if burst == "INCR":
-            address = aligned_start + (index + 1) * step
-        elif burst == "WRAP":
-            address = wrap_low + ((address - wrap_low + step) % span)
-        # FIXED 保持 address，非对齐时每拍也保持原字节窗口。
-    return result
-```
-
-`high_lane` 通过按传输大小向下对齐，正确处理非对齐首拍；INCR 后续拍对齐，FIXED 则每拍重复同一个窗口。写传输的 WSTRB 只能在 `low_lane～high_lane` 中选取子集；读传输按地址和大小确定有效字节，没有读字节使能信号。
-
-原文伪代码中的读写操作分别表示对当前允许字节范围执行一次数据操作，并不意味着可以跳过 VALID/READY 握手。写监视器应在 W 握手时增加拍数，读监视器应在 R 握手时增加拍数，而不是每个时钟无条件推进这里的循环。
-
-依据：A3.4.1 地址及字节通道公式，A3-50～A3-51；A3.4.2，A3-52～A3-53。
-
-## 7. A3.4.3：Regular 属性——接口可以约定只使用规则子集
-
-Regular（规则事务）描述一组受限的事务形状，目的是让特定接口简化译码。它不是新增的逐事务物理信号，也不是允许普通 AXI4 随意拒绝合法突发的开关。
-
-本地 IHI 0022H 的 A3-53 将筛选项写为：`AxLEN` 取 `1、2、4、8、16`；大于 1 时，`AxSIZE` 与数据总线宽度一致；类型为 INCR 或 WRAP；INCR 起点按事务容器对齐；WRAP 起点按传输大小对齐。
-
-**版本文字核对说明：**这里的原文使用了 `AxLEN/AxSIZE` 字段名称描述长度和大小，存在编码与解码量混用的歧义。例如前文明确规定拍数为 `AxLEN+1`，不能在此悄悄把原句改写成一条编码约束。本文保留其定义范围及互操作含义，但不据这段含混文字提供 Regular 判定代码；实现该属性时应核对适用版本及其勘误。普通突发仍严格按第 5 节的 LEN/SIZE 编码计算。
-
-| `Regular_Transactions_Only` | 接口声明的含义 |
-| --- | --- |
-| `True` | 主设备只发 Regular，或从设备只支持 Regular |
-| `False` | 不以 Regular 子集限制合法的突发类型、大小和长度组合 |
-| 未声明 | 按 `False` 处理 |
-
-IHI 0022H 只允许 AXI5、ACE5、ACE5-Lite、ACE5-LiteDVM 接口将该属性设为 True。ACE（AXI Coherency Extensions，AXI 缓存一致性扩展）相关接口在这里仅用于说明属性适用范围，不展开一致性机制；DVM（Distributed Virtual Memory，分布式虚拟内存）为相应接口名称的一部分。
-
-| 主设备声明 | 从设备 False | 从设备 True |
-| --- | --- | --- |
-| False | 兼容 | 不兼容，可能收到非 Regular 事务 |
-| True | 兼容 | 兼容 |
-
-<span style="background-color:#FBC952;color:#4A3410;font-weight:700;">只支持 Regular 的从设备不能直接接收可能发出非 Regular 事务的主设备，否则可能出现数据损坏或死锁。</span>
-
-依据：A3.4.3，A3-53，表 A3-4。此节为版本限定内容，不作为本文 AXI4 示例的裁剪依据。
-
-## 8. A3.4.4：数据布局——哪些字节真正参与传输
-
-### 8.1 WSTRB：地址范围内再选择要写的字节
-
-WSTRB（Write Strobes，写字节选通）每一位控制 WDATA 的一个字节。先看 32 位总线的对应关系。
-
-![写字节选通映射](image/axi-a3/v2-12-strobes.png)
-
-图 12：WSTRB 与 WDATA 字节通道（教学重绘）
-
-本例地址 `0x1000`、大小 4 字节允许 lane 0～3；`WSTRB=0011` 只选择其中两个，所以仅写 `0x1000` 和 `0x1001`。未选中字节不写入，不是把存储器中的这些字节写成 0。
-
-1. <span style="background-color:#FBC952;color:#4A3410;font-weight:700;">WSTRB[n] 对应 WDATA[8n+7:8n]，只能在当前地址和大小允许的字节通道范围内置 1。</span>
-2. 有效写拍可以使用全零 WSTRB；该拍仍需要握手并计入长度。
-3. `WVALID=0` 时 WSTRB 可取任意值，规范推荐全零或保持先前值。
-4. FIXED 的允许字节窗口每拍相同，但窗口内具体哪些 WSTRB 位为 1 可以随拍改变。
-
-### 8.2 Narrow Transfer：传输比总线窄
-
-Narrow Transfer（窄传输）表示 `2 ** AxSIZE` 小于数据总线字节数。先把总线想成一排固定的字节槽位：32-bit 总线有 lane 0～3，64-bit 总线有 lane 0～7。某个内存地址落在哪个槽位，由它在当前总线字内的位置决定：
+为了容纳 AXI4 中 INCR 突发类型扩展后的突发长度，AXI4 的突发长度定义为：
 
 ```text
-lane = 地址 mod 总线字节数
+Burst_Length = AxLEN[7:0] + 1
 ```
 
-例如 32-bit 总线一次覆盖 4 个连续地址：`0x00、0x01、0x02、0x03` 分别落在 lane `0、1、2、3`；下一个总线字从 `0x04` 开始，所以 `0x04 mod 4 = 0`，又回到 lane 0。lane 回到 0 不表示地址回退，而是进入了下一个 32-bit 总线字。
+> **原文（English）**
+>
+> To accommodate the extended burst length of the INCR burst type in AXI4, the burst length for AXI4 is defined as:
+>
+>     Burst_Length = AxLEN[7:0] + 1
 
-| 总线 / 每拍大小 | INCR 地址序列 | 使用的 lane |
-| --- | --- | --- |
-| 总线 / 每拍大小 | 每拍访问的地址 | 当前拍使用的 lane |
-| --- | --- | --- |
-| 32-bit / 1 Byte，5 拍 | `0`、`1`、`2`、`3`、`4` | `0`、`1`、`2`、`3`、`0` |
-| 64-bit / 4 Byte，3 拍 | `4～7`、`8～11`、`12～15` | `4～7`、`0～3`、`4～7` |
-| 64-bit / 4 Byte，WRAP 4 拍 | `4～7`、`8～11`、`12～15`、`0～3` | `4～7`、`0～3`、`4～7`、`0～3` |
+AXI 对突发传输的使用规定了以下规则：
 
-逐行读表时，只做两步：
+- 对于回绕突发传输，突发长度必须为 2、4、8 或 16。
+- 一次突发传输不得跨越 4KB 地址边界。
+- 不支持提前终止突发传输。
 
-1. 先看这一拍实际访问的地址范围；地址范围有几个字节，就需要几个连续 lane。
-2. 再用地址对总线字节数取模，确定它在总线中的位置；跨过总线字边界时，lane 会从 0 重新编号。
+> **原文（English）**
+>
+> AXI has the following rules governing the use of bursts:
+>
+> - For wrapping bursts, the burst length must be 2, 4, 8, or 16.
+> - A burst must not cross a 4KB address boundary.
+> - Early termination of bursts is not supported.
 
-因此第一行的第 5 拍地址虽然是 `4`，它落在第二个 32-bit 总线字的第一个字节，使用 lane 0。第二行的 64-bit 总线有 8 个 lane，但每拍只有 4 Byte，所以一次只占连续 4 个 lane；起点 `4` 占 lane 4～7，地址 `8` 进入下一个总线字后占 lane 0～3。第三行只是把同样的 16 字节窗口按 WRAP 顺序重新排列。INCR/WRAP 会按每拍地址选择 lane；FIXED 保持相同 lane 窗口。不能误以为 64 位总线就要求每拍 8 字节。
 
-### 8.2.1 逐周期案例：32-bit 总线上的 1 Byte INCR
+任何组件都不能提前终止突发传输。不过，为减少一次写突发传输中的数据传输次数，Master 可以通过撤销所有写选通信号来禁止后续写入。在此情况下，Master 必须完成该突发传输中剩余的传输。在一次读突发传输中，Master 可以丢弃读数据，但必须完成该突发传输中的全部传输。
 
-下面只画 W 通道，接收方每拍都准备好。这样可以把“地址递增”和“lane 重新编号”分开看。
+> **原文（English）**
+>
+> No component can terminate a burst early. However, to reduce the number of data transfers in a write burst, the master can disable further writing by deasserting all the write strobes. In this case, the master must complete the remaining transfers in the burst. In a read burst, the master can discard read data, but it must complete all transfers in the burst.
 
-![窄传输逐周期时序](image/axi-a3/v2-14-narrow-timing.png)
 
-图 14：32-bit 总线、1 Byte/拍的窄传输时序（教学重绘）
+> **注（Note）**
+>
+> 访问 FIFO 等读敏感设备时，丢弃不需要的读数据可能造成数据丢失。访问此类设备时，Master 必须使用与所需数据传输大小完全匹配的突发长度。
 
-1. `T2`：`WVALID=1`、`WREADY=1`，地址 `0x00` 在 lane 0，`WSTRB=0001`，完成第 1 拍。
-2. `T3`：地址变为 `0x01`，落在 lane 1，`WSTRB=0010`，完成第 2 拍。
-3. `T4`：地址 `0x02` 对应 lane 2，`WSTRB=0100`，完成第 3 拍。
-4. `T5`：地址 `0x03` 对应 lane 3，`WSTRB=1000`，完成第 4 拍。
-5. `T6`：地址进入下一个 32-bit 总线字，变为 `0x04`；`0x04 mod 4 = 0`，所以 lane 回到 0，`WSTRB` 又是 `0001`，完成第 5 拍。
+> **原文（English）**
+>
+> Discarding read data that is not required can result in lost data when accessing a read-sensitive device such as a FIFO. When accessing such a device, a master must use a burst length that exactly matches the size of the required data transfer.
 
-这里的 `WADDR` 是教学标注，用来说明每拍目标地址；AXI 实际只在地址通道发送一次 `AWADDR`，后续地址由从设备按 `AxBURST`、`AxSIZE` 和 `AxLEN` 计算。图中的 `WSTRB` 是 4 位，从左到右按 `lane 3..lane 0` 书写，因此 lane 0 对应右侧最低位 1。
 
-<span style="background-color:#FBC952;color:#4A3410;font-weight:700;">lane 回到 0 只说明跨过了一个总线字边界；判断地址是否连续，必须看地址序列而不是只看 lane 序列。</span>
+第 A7-97 页“独占访问限制”定义了在独占访问期间影响突发传输的其他规则。
 
-### 8.2.2 逐周期案例：64-bit 总线上的 4 Byte INCR
+> **原文（English）**
+>
+> Exclusive access restrictions on page A7-97 defines additional rules affecting bursts during an exclusive access.
 
-截图中的第二行可以这样逐拍读。64-bit 总线有 8 个字节 lane（`lane 0～7`），但 `AxSIZE=2` 只表示每拍最多传 4 Byte，因此每拍只占其中连续 4 个 lane。
+在 AXI4 中，INCR 突发类型且长度大于 16 的 transaction 可以转换为多个更短的突发传输，即使 transaction 属性表明该 transaction 为 Non-modifiable。参见第 A4-64 页“AXI4 对内存属性信号的更改”。在此情况下，所生成的突发传输必须保留与原 transaction 相同的 transaction 特性，唯一例外为：
 
-![64 位总线窄传输时序](image/axi-a3/v2-15-narrow-64bit.png)
+- 突发长度缩短。
+- 对所生成突发传输的地址进行适当调整。
 
-图 15：64-bit 总线、4 Byte/拍的窄传输时序（教学重绘）
+> **原文（English）**
+>
+> In AXI4, transactions with INCR burst type and length greater than 16 can be converted to multiple smaller bursts, even if the transaction attributes indicate that the transaction is Non-modifiable. See AXI4 changes to memory attribute signaling on page A4-64. In this case, the generated bursts must retain the same transaction characteristics as the original transaction, the only exception is that:
+>
+> - The burst length is reduced.
+> - The address of the generated bursts is adapted appropriately.
 
-1. `T2`：目标地址范围为 `0x04～0x07`，位于第一个 64-bit 总线字的高 4 个字节，因此使用 lane 4～7。按 `WSTRB[7:0]` 书写时，对应 `11110000`。
-2. `T3`：地址范围为 `0x08～0x0B`，进入下一个 64-bit 总线字的低 4 个字节，因此使用 lane 0～3，对应 `00001111`。
-3. `T4`：地址范围为 `0x0C～0x0F`，又位于该总线字的高 4 个字节，因此回到 lane 4～7，对应 `11110000`。
 
-这里 lane 的变化是 `4～7`、`0～3`、再回到 `4～7`，但地址始终按 4 Byte 递增。原因是一个 64-bit 总线字覆盖 8 个连续地址，地址每增加 8，lane 编号就从 0 重新开始。`WSTRB` 的二进制位从左到右是 `lane 7..lane 0`，所以高 4 个 lane 写成 `11110000`，低 4 个 lane 写成 `00001111`。
+> **注（Note）**
+>
+> 为实现与 AXI3 的兼容，要求具备将较长突发传输拆分为多个较短突发传输的能力。为了降低较长突发传输对 QoS 保证的影响，也可能需要此能力。
 
-<span style="background-color:#FBC952;color:#4A3410;font-weight:700;">总线宽度决定 lane 总数，AxSIZE 决定每拍占用的 lane 数；64-bit 总线不等于每拍必须传 8 Byte。</span>
+> **原文（English）**
+>
+> The ability to break longer bursts into multiple shorter bursts is required for AXI3 compatibility. This ability might also be needed to reduce the impact of longer bursts on the QoS guarantees.
 
-### 8.3 Byte Invariance：端序不改变地址与 lane 的对应
 
-Byte Invariance（字节不变性）保证某个字节地址在同一接口上总通过相同的 8 根数据线传输。Endianness（端序）决定多字节数值的各字节按什么顺序放入地址空间，不改变字节地址本身。
+#### 突发大小 / Burst size
 
-以数值 `0x0A0B0C0D` 为例，MSB（Most Significant Byte，最高有效字节）是 `0x0A`，LSB（Least Significant Byte，最低有效字节）是 `0x0D`：
+一次突发传输中每次数据传输（即每个数据拍）能够传输的最大字节数，由以下信号指定：
 
-| 内存地址 | Big-endian（大端） | Little-endian（小端） |
-| --- | --- | --- |
-| `Addr` | `0x0A` | `0x0D` |
-| `Addr+1` | `0x0B` | `0x0C` |
-| `Addr+2` | `0x0C` | `0x0B` |
-| `Addr+3` | `0x0D` | `0x0A` |
+- 对于读传输，为 `ARSIZE[2:0]`。
+- 对于写传输，为 `AWSIZE[2:0]`。
 
-两种布局占用同一段连续字节地址，只是数值中字节的顺序不同。一段结构可以让头部使用小端、载荷使用大端；访问载荷不应错误地交换或覆盖头部的字节。原图的混合端序示例还包含跨字段边界的连续 16 位字段，强调应按字节地址理解结构，而不是整条总线统一翻转。
+> **原文（English）**
+>
+> The maximum number of bytes to transfer in each data transfer, or beat, in a burst, is specified by:
+>
+> - ARSIZE[2:0], for read transfers
+> - AWSIZE[2:0], for write transfers
 
-### 8.3.1 逐周期理解：同一地址始终走同一 lane
+在本规范中，`AxSIZE` 表示 `ARSIZE` 或 `AWSIZE`。
 
-只看上面的地址表，容易把“字节放在哪个地址”和“这个地址通过哪根数据线”混为一谈。下面把一笔 32-bit 写拆成地址握手和数据握手，再分别标出大端、小端端点送出的 `WDATA`。
+> **原文（English）**
+>
+> In this specification, AxSIZE indicates ARSIZE or AWSIZE.
 
-![Byte Invariance 端序与 lane 时序](image/axi-a3/v2-16-byte-invariance.png)
+表 A3-2 给出了 `AxSIZE` 编码。
 
-图 16：同一地址在大端、小端表示下使用相同 lane（教学重绘）
+> **原文（English）**
+>
+> Table A3-2 shows the AxSIZE encoding.
 
-1. `T2`：`AWVALID=1` 且 `AWREADY=1`，地址 `Addr` 完成一次地址握手。AXI 的地址通道只发送一次起始地址，不会为 `Addr+1`、`Addr+2`、`Addr+3` 再发送 3 个 AW。
-2. `T3`：`WVALID=1` 且 `WREADY=1`，一拍 4 Byte 的数据完成握手；`WSTRB=1111` 表示 lane 0～3 都有效。此时固定的地址到 lane 映射是：`Addr` 对应 lane 0，`Addr+1` 对应 lane 1，`Addr+2` 对应 lane 2，`Addr+3` 对应 lane 3。
-3. 若端点按大端解释数值 `0x0A0B0C0D`，最低地址 `Addr` 放 `0x0A`，因此总线上的 lane 3..0 可写成 `0D 0C 0B 0A`；若按小端解释，`Addr` 放 `0x0D`，lane 3..0 可写成 `0A 0B 0C 0D`。
-4. 两行 `WDATA` 的字节排列不同，但 `Addr` 仍然经过 lane 0，`Addr+1` 仍然经过 lane 1。也就是说，端序改变的是“这个地址上的字节值”，不是“这个地址选择哪根 8 位数据线”。
+![表 A3-2：突发大小编码](image/axi-a3/table-a3-2-burst-size-encoding.png)
 
-这里的两个 `WDATA` 只是对同一个数值的两种端点表示，用来说明端序差异；它们不是要求互连器无条件翻转整条总线。只有当连接的端点不是字节不变的，才需要额外的端序转换。
+> **原文表题（English）**：Table A3-2 Burst size encoding
 
-<span style="background-color:#FBC952;color:#4A3410;font-weight:700;">记忆方法：先由地址决定 lane，再由端序决定该地址放 MSB 还是 LSB；不要把整条 WDATA 按端序整体翻转来代替地址到 lane 的映射。</span>
+如果 AXI 总线比突发大小更宽，则 AXI 接口必须根据传输地址确定每次传输使用数据总线的哪些字节通道。参见第 A3-54 页“数据读写结构”。
 
-固定访问宽度的组件要接到正确 lane；支持多种宽度的非字节不变接口可能需要转换。多数小端组件可直接连接，只支持大端传输的组件需要相应转换功能。
+> **原文（English）**
+>
+> If the AXI bus is wider than the burst size, the AXI interface must determine from the transfer address which byte lanes of the data bus to use for each transfer. See Data read and write structure on page A3-54.
 
-### 8.4 Unaligned Transfer：首拍有效字节可以少于大小
 
-Unaligned Transfer（非对齐传输）表示起点不落在每拍大小的自然边界。下图将 `0x1001` 开始的四拍写展开。
+任何传输的大小都不得超过该 transaction 中任一 agent 的数据总线宽度。
 
-![非对齐首拍与后续对齐拍](image/axi-a3/v2-13-unaligned.png)
+> **原文（English）**
+>
+> The size of any transfer must not exceed the data bus width of either agent in the transaction.
 
-图 13：非对齐 INCR 的逐拍有效字节（教学重绘）
 
-1. 首拍只允许 `0x1001～0x1003`，所以 lane 0 不参与，最多写 3 字节。
-2. 第二拍从 `0x1004` 开始，随后为 `0x1008`、`0x100C`；后三拍各最多 4 字节。
-3. 四拍最多访问 15 字节，不会为了凑满 16 字节而在首拍偷偷跨到 `0x1004`。
+#### 突发类型 / Burst type
 
-写操作可以用非对齐低位地址描述起点，也可以给对齐地址并用 WSTRB 屏蔽开头不写的字节；地址信息与 WSTRB 必须一致。例如 `AWADDR=0x1001、AWSIZE=2` 时首拍不能使用 `WSTRB=1111`。
+AXI 协议定义了三种突发类型：
 
-<span style="background-color:#FBC952;color:#4A3410;font-weight:700;">读通道没有 WSTRB，也没有 RSTRB；读的有效字节范围由地址与大小确定，主设备只使用请求所需的字节。</span>
+> **原文（English）**
+>
+> The AXI protocol defines three burst types:
 
-从设备不必为了非对齐请求自动拼出一拍“满宽连续数据”；主设备如需组合多个返回拍，应自行组织。非对齐支持也不取消 WRAP 的起点对齐要求。
+`FIXED`  在固定突发传输中：
 
-为覆盖 32/64 位总线上的不同起点，下面列出规范原图对应的代表性窗口。窗口均为该拍潜在访问范围，写入仍可由 WSTRB 进一步缩小：
+- 突发传输中每次传输的地址都相同。
+- 突发传输中所有数据拍的有效字节通道保持不变。不过，在这些字节通道内，每个数据拍实际置位 `WSTRB` 的字节可以不同。
 
-| 总线 / 起点 / 拍数 | 每拍大小 | 逐拍可用字节地址 |
-| --- | --- | --- |
-| 32-bit / `0x00` / 4 | 4 Byte | `00～03、04～07、08～0B、0C～0F` |
-| 32-bit / `0x01` / 4 | 4 Byte | `01～03、04～07、08～0B、0C～0F` |
-| 32-bit / `0x01` / 5 | 4 Byte | 上行后再加 `10～13` |
-| 32-bit / `0x07` / 5 | 4 Byte | `07、08～0B、0C～0F、10～13、14～17` |
-| 64-bit / `0x00` / 4 | 4 Byte | `00～03、04～07、08～0B、0C～0F` |
-| 64-bit / `0x07` / 4 或 5 | 4 Byte | `07、08～0B、0C～0F、10～13`，5 拍再加 `14～17` |
+> **原文（English）**
+>
+> FIXED In a fixed burst:
+>
+> - The address is the same for every transfer in the burst.
+> - The byte lanes that are valid are constant for all beats in the burst. However, within those byte lanes, the actual bytes that have WSTRB asserted can differ for each beat in the burst.
 
-地址序列相同不表示总线位段相同。例如地址 `0x07` 在 32 位总线上走 lane 3，在 64 位总线上走 lane 7。具体 lane 始终由地址对总线字节数取模确定。
+这种突发类型用于重复访问同一位置，例如装载或清空 FIFO。
 
-依据：A3.4.4，A3-54～A3-58；图 A3-8～A3-15。
+> **原文（English）**
+>
+> This burst type is used for repeated accesses to the same location such as when loading or emptying a FIFO.
 
-## 9. A3.4.5：响应——握手完成与访问成功是两个判断
+`INCR`  递增。在递增突发传输中，突发传输中每次传输的地址都在前一次传输地址的基础上递增。递增值取决于传输大小。例如，对于对齐的起始地址，在传输大小为 4 字节的突发传输中，每次传输的地址等于前一次地址加四。
 
-RRESP（Read Response，读响应码）随每拍 R 数据返回；BRESP（Write Response，写响应码）通过 B 通道返回整笔写突发的结果。
+> **原文（English）**
+>
+> INCR Incrementing. In an incrementing burst, the address for each transfer in the burst is an increment of the address for the previous transfer. The increment value depends on the size of the transfer. For example, for an aligned start address, the address for each transfer in a burst with a size of 4 bytes is the previous address plus four.
 
-| 编码 / 名称 | 含义 | 不能误解为 |
-| --- | --- | --- |
-| `00` OKAY | 普通访问成功；也可能是独占访问失败或目标不支持独占 | 所有独占操作都成功 |
-| `01` EXOKAY（Exclusive Okay） | 独占读或独占写阶段成功 | 普通访问也能随意返回 |
-| `10` SLVERR（Slave Error） | 已到达从设备，从设备报告错误 | 地址一定没译码到目标 |
-| `11` DECERR（Decode Error） | 无法成功译码到从设备 | 可以直接丢掉整个事务 |
+这种突发类型用于访问普通顺序存储器。
 
-SLVERR 的例子包括 FIFO/缓冲上溢或下溢、不支持的传输大小、写只读地址、从设备内部超时、访问禁用或掉电功能。规范推荐只用错误响应报告错误，不把正常预期事件当作报错。
+> **原文（English）**
+>
+> This burst type is used for accesses to normal sequential memory.
 
-互连无法成功译码时必须返回 DECERR，规范推荐将访问送到 Default Slave（默认从设备，负责接收未映射访问并返回错误）。
+`WRAP`  回绕突发传输与递增突发传输相似，但如果到达地址上限，地址会回绕到较低地址。
 
-1. <span style="background-color:#FBC952;color:#4A3410;font-weight:700;">一个写突发只返回一份 B 响应；一个读突发的各数据拍可以返回不同 RRESP。</span>
-2. 一个 4 拍读可以返回 `OKAY、SLVERR、OKAY、OKAY`，但必须完成 4 次 R 握手，第 4 拍带 RLAST。
-3. 如果整个 8 拍读请求都因目标错误而无法正常读取，仍应完成 8 拍错误响应；不能第一拍报错后取消其余 7 拍。
-4. 写数据仍要完成规定拍数，产生 DECERR 的组件也要遵守完整事务要求。报错不会修改 LEN。
+> **原文（English）**
+>
+> WRAP A wrapping burst is similar to an incrementing burst, except that the address wraps around to a lower address if an upper address limit is reached.
 
-读下面的时序图时，始终分开问两个问题：这一拍有没有完成握手？这一拍的响应码是什么？前者由 `RVALID && RREADY` 决定，后者由 `RRESP` 或 `BRESP` 表示；握手成功不等于访问成功。
+回绕突发传输适用以下限制：
 
-### 9.1 逐拍读响应：错误和反压都不会减少拍数
+- 起始地址必须与每次传输的大小对齐。
+- 突发长度必须为 2、4、8 或 16 次传输。
 
-![4 拍读响应时序](image/axi-a3/v2-17-read-response.png)
+> **原文（English）**
+>
+> The following restrictions apply to wrapping bursts:
+>
+> - The start address must be aligned to the size of each transfer.
+> - The length of the burst must be 2, 4, 8, or 16 transfers.
 
-图 17：4 拍读中某一拍返回 SLVERR，并在等待后完成全部 R 握手（教学重绘）
 
-1. `T2` 完成读地址握手；`ARLEN=3` 表示后面必须接收 4 拍 R 数据。
-2. `T3` 接收 `D0`，响应为 `OKAY`。`T4`、`T5` 虽然 `RVALID=1`，但 `RREADY=0`，所以没有新的 R 握手；`D1`、`SLVERR` 和 `RLAST=0` 必须保持不变。
-3. `T6` 接收 `D1`，这一拍的访问结果是 `SLVERR`，但它只是第 2 拍的结果，不会取消第 3、4 拍。
-4. `T7` 接收 `D2`，`T8` 接收 `D3`；只有 `T8` 的 `RLAST=1` 随 R 握手被接收后，4 拍读突发才完整结束。
+回绕突发传输的行为为：
 
-### 9.2 整笔写响应：多拍 W 数据只返回一份 B 响应
+- 突发传输所使用的最低地址与待传输数据的总大小对齐，即与（突发传输中每次传输的大小）×（突发传输中的传输次数）对齐。该地址定义为回绕边界。
+- 每次传输之后，地址以与 INCR 突发传输相同的方式递增。但是，如果递增后的地址等于（回绕边界）＋（待传输数据的总大小），则地址回绕到回绕边界。
+- 突发传输中的第一次传输可以使用高于回绕边界的地址，但须遵守回绕突发传输的限制。对于任何 WRAP 突发传输，如果第一个地址高于回绕边界，地址都会发生回绕。
 
-![4 拍写响应时序](image/axi-a3/v2-18-write-response.png)
+> **原文（English）**
+>
+> The behavior of a wrapping burst is:
+>
+> - The lowest address that is used by the burst is aligned to the total size of the data to be transferred, that is, to ((size of each transfer in the burst) × (number of transfers in the burst)). This address is defined as the wrap boundary.
+> - After each transfer, the address increments in the same way as for an INCR burst. However, if this incremented address is ((wrap boundary) + (total size of data to be transferred)), then the address wraps round to the wrap boundary.
+> - The first transfer in the burst can use an address that is higher than the wrap boundary, subject to the restrictions that apply to wrapping bursts. The address wraps for any WRAP burst when the first address is higher than the wrap boundary.
 
-图 18：4 拍写完成后只返回一份 B 响应，B 通道单独握手（教学重绘）
+这种突发类型用于访问 cache line。
 
-1. `T2` 接收写地址，`T3`～`T6` 接收 4 拍写数据；`T6` 的 `WLAST=1` 表示这是最后一拍 W 数据。
-2. `T7` 时从设备已经把 `BRESP=SLVERR` 放到 B 通道并拉高 `BVALID`，但主设备 `BREADY=0`，所以这不是 B 握手；响应必须保持。
-3. `T8` 同时满足 `BVALID=1` 和 `BREADY=1`，完成唯一一次 B 握手。这个 `SLVERR` 描述整笔 4 拍写，而不是只描述 `D3`。
+> **原文（English）**
+>
+> This burst type is used for cache line accesses.
 
-因此，读事务要数 R 通道成功握手的拍数，写事务要先数完 W 数据拍，再等待唯一的 B 响应握手；不要用 `SLVERR/DECERR` 代替握手计数，也不要看到错误后提前结束事务。
+突发类型由以下信号指定：
 
-依据：A3.4.5，A3-59～A3-60；独占访问细节见 A7。
+- 对于读传输，为 `ARBURST[1:0]`。
+- 对于写传输，为 `AWBURST[1:0]`。
 
-## 10. 易错点：把“允许”与“必须”分清
+> **原文（English）**
+>
+> The burst type is specified by:
+>
+> - ARBURST[1:0], for read transfers
+> - AWBURST[1:0], for write transfers
 
-| 常见误解 | 正确理解与误解原因 | 回看位置 |
-| --- | --- | --- |
-| READY 一高就算传输 | 还需同一上升沿 VALID 为高；单看电平容易漏掉有效条件 | A3.2.1 |
-| 等待时只需数据稳定 | 当前通道全部有效载荷都应保持；侧带控制也属于同一拍 | A3.2.1～A3.2.2 |
-| READY 可等 VALID，所以可组合直连 | 协议许可与电路时序约束不同，接口输入输出无组合路径 | A3.1.1、A3.2.1 |
-| WLAST 高了多个周期就是多拍 | 只数 WVALID 与 WREADY 同高的采样沿；等待可能延长末拍 | A3.2.2 |
-| 地址章节先讲 AW，所以必须 AW 先到 | 教学顺序不是协议先后顺序；W 可以先到 | A3.3 |
-| 看见 WLAST 就能发 AXI4 BVALID | 需要末拍已握手且地址也已握手；LAST 本身不等于接收完成 | A3.3.1 |
-| AxLEN=4 表示 4 拍 | 编码加一才是拍数；实际为 5 拍 | A3.4.1 |
-| 非对齐 INCR 每次从原地址加 SIZE | 第二拍起从对齐基址递增；SIZE 还是指数编码 | A3.4.1～A3.4.2 |
-| WSTRB=0 就不算一拍 | 不写字节与不传输不同；有效握手仍计数 | A3.4.1、A3.4.4 |
-| 报错后可以提前结束 | 响应状态与事务长度独立；剩余拍数必须完成 | A3.4.5 |
+在本规范中，`AxBURST` 表示 `ARBURST` 或 `AWBURST`。
 
-## 11. 原文覆盖对照表
+> **原文（English）**
+>
+> In this specification, AxBURST indicates ARBURST or AWBURST.
 
-| PDF 章节或页码 | 原文知识点 | 本文位置 |
-| --- | --- | --- |
-| A3.1.1 / A3-40 | 上升沿采样、输出更新、无组合路径 | 第 2 节 |
-| A3.1.2 / A3-40，图 A3-1 | 异步置位、同步释放、复位 VALID、最早请求时刻 | 第 2 节、图 2 |
-| A3.2.1 / A3-41～42，图 A3-2～4 | 三种握手顺序、保持规则、READY 撤销 | 第 3 节、图 3～5 |
-| A3.2.2 / A3-42～43，表 A3-1 | 五通道握手、READY 默认值、LAST、无效 lane 推荐 | 第 1、3 节 |
-| A3.3 / A3-44 | 地址数据独立、互连重新配对、跨事务资源依赖 | 第 4 节 |
-| A3.3.1 / A3-44～46，图 A3-5～7 | 读依赖、AXI3 写依赖、AXI4/5 附加依赖及防死锁 | 第 4 节、图 6～9 |
-| A3.3.2 / A3-47 | 旧从设备适配及新 AXI3 实现建议 | 第 4.3 节 |
-| A3.4.1 / A3-48～49 | 长度、4KB、禁止提前结束、长 INCR 拆分、大小 | 第 5.1、5.3 节 |
-| A3.4.1 / A3-49～51，表 A3-2～3 | 类型编码、WRAP 对齐、地址公式、字节通道、容器 | 第 5～6 节、图 10～11 |
-| A3.4.2 / A3-52～53 | 逐拍地址与字节范围算法、非对齐后续拍 | 第 6 节 |
-| A3.4.3 / A3-53，表 A3-4 | Regular 定义、默认属性、适用接口及互操作 | 第 7 节，含原文编码歧义说明 |
-| A3.4.4 / A3-54～55，图 A3-8～9 | WSTRB、32/64 位窄传输、FIXED lane | 第 8.1～8.2 节、图 12 |
-| A3.4.4 / A3-55～56，图 A3-10～12 | 大端、小端、混合端序、字节不变性与组件连接 | 第 8.3 节 |
-| A3.4.4 / A3-56～58，图 A3-13～15 | 非对齐表示、32/64 位例子、64 位 WRAP | 第 8.2、8.4 节、图 13 |
-| A3.4.5 / A3-59～60，表 A3-5 | 响应编码、独占含义、逐拍读/整笔写、错误不取消 | 第 9 节 |
+表 A3-3 给出了 `AxBURST` 信号编码。
 
-## 12. 自测题
+> **原文（English）**
+>
+> Table A3-3 shows the AxBURST signal encoding.
 
-<details>
-  <summary>1. 复位期间 ARREADY 为 1，是否违反 A3 的复位要求？</summary>
+![表 A3-3：突发类型编码](image/axi-a3/table-a3-3-burst-type-encoding.png)
 
-  <span style="background-color:#FBC952;color:#4A3410;font-weight:700;">不违反。复位强制为 0 的是五个 VALID，其他信号可取任意值。</span>依据：A3.1.2。
+> **原文表题（English）**：Table A3-3 Burst type encoding
 
-</details>
+#### 突发地址 / Burst address
 
-<details>
-  <summary>2. VALID 连续三个采样沿为 1，READY 为 0、0、1，共传输了几次？</summary>
+本节给出确定突发传输中各次传输的地址和字节通道的方法。公式使用以下变量：
 
-  <span style="background-color:#FBC952;color:#4A3410;font-weight:700;">只传输一次。</span>前两个沿是等待，当前载荷应保持到第三个沿的握手。依据：A3.2.1。
+> **原文（English）**
+>
+> This section provides methods for determining the address and byte lanes of transfers within a burst. The equations use the following variables:
 
-</details>
+`Start_Address`  Master 发出的起始地址。
 
-<details>
-  <summary>3. WVALID=1、WREADY=0 时，能只改变 WSTRB 而保持 WDATA 不变吗？</summary>
+`Number_Bytes`  每次数据传输的最大字节数。
 
-  <span style="background-color:#FBC952;color:#4A3410;font-weight:700;">不能。WSTRB 是当前写数据拍的控制信息，等待期间也必须保持。</span>依据：A3.2.1～A3.2.2。
+`Data_Bus_Bytes`  数据总线中的字节通道数。
 
-</details>
+`Aligned_Address`  起始地址的对齐版本。
 
-<details>
-  <summary>4. AXI4 从设备收到末拍写数据，但还没有接收地址，可以产生 BVALID 吗？</summary>
+`Burst_Length`  一次突发传输中的数据传输总数。
 
-  <span style="background-color:#FBC952;color:#4A3410;font-weight:700;">不可以。还必须等待对应 AW 握手完成。</span>依据：A3.3.1。
+`Address_N`  一次突发传输中第 N 次传输的地址。对于突发传输中的第一次传输，N 为 1。
 
-</details>
+`Wrap_Boundary`  回绕突发传输中的最低地址。
 
-<details>
-  <summary>5. 从设备能等 RREADY=1 之后才决定拉高 RVALID 吗？</summary>
+`Lower_Byte_Lane`  一次传输中最低地址字节所在的字节通道。
 
-  <span style="background-color:#FBC952;color:#4A3410;font-weight:700;">不能以 RREADY 为产生 RVALID 的前提。</span>收到读请求且数据准备好后，应独立提供有效数据。依据：A3.3.1。
+`Upper_Byte_Lane`  一次传输中最高地址字节所在的字节通道。
 
-</details>
+`INT(x)`  x 向下取整后的整数值。
 
-<details>
-  <summary>6. AXI4 的 FIXED 突发能用 AxLEN=255 发 256 拍吗？</summary>
+> **原文（English）**
+>
+> Start_Address The start address that is issued by the master.
+>
+> Number_Bytes The maximum number of bytes in each data transfer.
+>
+> Data_Bus_Bytes The number of byte lanes in the data bus.
+>
+> Aligned_Address The aligned version of the start address.
+>
+> Burst_Length The total number of data transfers within a burst.
+>
+> Address_N The address of transfer N in a burst. N is 1 for the first transfer in a burst.
+>
+> Wrap_Boundary The lowest address within a wrapping burst.
+>
+> Lower_Byte_Lane The byte lane of the lowest addressed byte of a transfer.
+>
+> Upper_Byte_Lane The byte lane of the highest addressed byte of a transfer.
+>
+> INT(x) The rounded-down integer value of x.
 
-  <span style="background-color:#FBC952;color:#4A3410;font-weight:700;">不能。256 拍扩展适用于 INCR，FIXED 最多 16 拍。</span>依据：A3.4.1。
+以下公式确定突发传输中各次传输的地址：
 
-</details>
+```text
+Start_Address   = AxADDR
+Number_Bytes    = 2 ^ AxSIZE
+Burst_Length    = AxLEN + 1
+Aligned_Address = (INT(Start_Address / Number_Bytes)) × Number_Bytes
+```
 
-<details>
-  <summary>7. WRAP 起点 0x100C、AxSIZE=2、AxLEN=3，第二拍地址是什么？</summary>
+以下公式确定一次突发传输中第一次传输的地址：
 
-  <span style="background-color:#FBC952;color:#4A3410;font-weight:700;">0x1000。</span>4 拍乘每拍 4 字节形成 16 字节窗口，递增到窗口上界时回绕。依据：A3.4.1。
+```text
+Address_1 = Start_Address
+```
 
-</details>
+对于 INCR 突发传输，以及地址尚未回绕的 WRAP 突发传输，以下公式确定突发传输中第一次传输之后任意一次传输的地址：
 
-<details>
-  <summary>8. 32 位总线，INCR 起点 0x1001、AxSIZE=2，首拍可以用 WSTRB=1111 吗？</summary>
+```text
+Address_N = Aligned_Address + (N - 1) × Number_Bytes
+```
 
-  <span style="background-color:#FBC952;color:#4A3410;font-weight:700;">不可以。lane 0 对应 0x1000，在首拍允许范围之外；全选可用字节时应为 1110。</span>依据：A3.4.4。
+对于 WRAP 突发传输，`Wrap_Boundary` 变量定义回绕边界：
 
-</details>
+```text
+Wrap_Boundary = (INT(Start_Address / (Number_Bytes × Burst_Length))) × (Number_Bytes × Burst_Length)
+```
 
-<details>
-  <summary>9. INCR 起点 0x0FF0、AxSIZE=2、AxLEN=4，是否跨 4KB？</summary>
+对于 WRAP 突发传输，如果 `Address_N = Wrap_Boundary + (Number_Bytes × Burst_Length)`，则：
 
-  <span style="background-color:#FBC952;color:#4A3410;font-weight:700;">跨界，非法。</span>这是 5 拍，末拍地址为 0x1000，最高可能访问 0x1003。依据：A3.4.1。
+- 当前传输使用以下公式：
 
-</details>
+  ```text
+  Address_N = Wrap_Boundary
+  ```
 
-<details>
-  <summary>10. 四拍读的第二拍返回 SLVERR，能省略第三、第四拍吗？</summary>
+- 任何后续传输使用以下公式：
 
-  <span style="background-color:#FBC952;color:#4A3410;font-weight:700;">不能。必须完成四拍，在第四拍标记 RLAST。</span>错误响应不会取消剩余数据传输。依据：A3.4.5。
+  ```text
+  Address_N = Start_Address + ((N - 1) × Number_Bytes) - (Number_Bytes × Burst_Length)
+  ```
 
-</details>
+以下公式确定一次突发传输中第一次传输所使用的字节通道：
 
-## 13. 下一章：事务属性为何影响完成含义
+```text
+Lower_Byte_Lane = Start_Address - (INT(Start_Address / Data_Bus_Bytes)) × Data_Bus_Bytes
+Upper_Byte_Lane = Aligned_Address + (Number_Bytes - 1) -
+                  (INT(Start_Address / Data_Bus_Bytes)) × Data_Bus_Bytes
+```
 
-A3 解决“什么时候接收了一拍、整笔事务如何组织”。A4 Transaction Attributes（事务属性）进一步说明请求经过缓存、缓冲和互连时允许怎样处理，以及某些访问的写响应意味着什么。进入 A4 前，应能独立判断握手、AW/W/B 与 AR/R 依赖，并算出突发的地址和有效字节范围。
+以下公式确定一次突发传输中第一次传输之后的所有传输所使用的字节通道：
 
-参考来源：Arm IHI 0022H《AMBA AXI and ACE Protocol Specification》，Chapter A3，A3-39～A3-60；相关补充章节为 A4、A5、A7。本文以本地 ID040120 版本核对，Regular 小节的编码歧义已在第 7 节显式标记。
+```text
+Lower_Byte_Lane = Address_N - (INT(Address_N / Data_Bus_Bytes)) × Data_Bus_Bytes
+Upper_Byte_Lane = Lower_Byte_Lane + Number_Bytes - 1
+```
 
-本文为个人学习导读，不是 Arm 官方文档。协议设计与实现应以适用版本的官方规范为准。
+数据在以下位段上传输：
+
+```text
+DATA((8 × Upper_Byte_Lane) + 7: (8 × Lower_Byte_Lane))
+```
+
+如果地址对齐且选通信号置位，transaction 容器描述该 transaction 中可能访问的所有字节：
+
+```text
+Container_Size = Number_Bytes × Burst_Length
+```
+
+对于 INCR 突发传输：
+
+```text
+Container_Lower = Aligned_Address
+Container_Upper = Aligned_Address + Container_Size
+```
+
+对于 WRAP 突发传输：
+
+```text
+Container_Lower = Wrap_Boundary
+Container_Upper = Wrap_Boundary + Container_Size
+```
+
+> **原文（English）**
+>
+> These equations determine addresses of transfers within a burst:
+>
+>     Start_Address = AxADDR
+>     Number_Bytes = 2 ^ AxSIZE
+>     Burst_Length = AxLEN + 1
+>     Aligned_Address = (INT(Start_Address / Number_Bytes)) × Number_Bytes
+>
+> This equation determines the address of the first transfer in a burst:
+>
+>     Address_1 = Start_Address
+>
+> For an INCR burst, and for a WRAP burst for which the address has not wrapped, this equation determines the address of any transfer after the first transfer in a burst:
+>
+>     Address_N = Aligned_Address + (N - 1) × Number_Bytes
+>
+> For a WRAP burst, the Wrap_Boundary variable defines the wrapping boundary:
+>
+>     Wrap_Boundary = (INT(Start_Address / (Number_Bytes × Burst_Length))) × (Number_Bytes × Burst_Length)
+>
+> For a WRAP burst, if Address_N = Wrap_Boundary + (Number_Bytes × Burst_Length), then:
+>
+> - Use this equation for the current transfer:
+>
+>       Address_N = Wrap_Boundary
+>
+> - Use this equation for any subsequent transfers:
+>
+>       Address_N = Start_Address + ((N - 1) × Number_Bytes) - (Number_Bytes × Burst_Length)
+>
+> These equations determine the byte lanes to use for the first transfer in a burst:
+>
+>     Lower_Byte_Lane = Start_Address - (INT(Start_Address / Data_Bus_Bytes)) × Data_Bus_Bytes
+>     Upper_Byte_Lane = Aligned_Address + (Number_Bytes - 1) -
+>                       (INT(Start_Address / Data_Bus_Bytes)) × Data_Bus_Bytes
+>
+> These equations determine the byte lanes to use for all transfers after the first transfer in a burst:
+>
+>     Lower_Byte_Lane = Address_N - (INT(Address_N / Data_Bus_Bytes)) × Data_Bus_Bytes
+>     Upper_Byte_Lane = Lower_Byte_Lane + Number_Bytes - 1
+>
+> Data is transferred on:
+>
+>     DATA((8 × Upper_Byte_Lane) + 7: (8 × Lower_Byte_Lane))
+>
+> The transaction container describes all the bytes that could be accessed in that transaction, if the address is aligned and strobes are asserted:
+>
+>     Container_Size = Number_Bytes x Burst_Length
+>
+> For INCR bursts:
+>
+>     Container_Lower = Aligned_Address
+>     Container_Upper = Aligned_Address + Container_Size
+>
+> For WRAP bursts:
+>
+>     Container_Lower = Wrap_Boundary
+>     Container_Upper = Wrap_Boundary + Container_Size
+
+### A3.4.2 传输的伪代码说明 / Pseudocode description of the transfers
+
+```text
+// DataTransfer()
+// ==============
+
+DataTransfer(Start_Address, Number_Bytes, Burst_Length, Data_Bus_Bytes, Mode, IsWrite)
+
+// Data_Bus_Bytes 是总线中 8-bit 字节通道的数量
+// Mode 是 AXI 传输模式
+// IsWrite 对写操作为 TRUE，对读操作为 FALSE
+
+assert Mode IN {FIXED, WRAP, INCR};
+
+addr = Start_Address;                         // 当前地址变量
+Aligned_Address = (INT(addr/Number_Bytes) * Number_Bytes);
+aligned = (Aligned_Address == addr);          // 检查 addr 是否与 nbytes 对齐
+dtsize = Number_Bytes * Burst_Length;         // 最大数据 transaction 总大小
+
+if mode == WRAP then
+    Lower_Wrap_Boundary = (INT(addr/dtsize) * dtsize);
+                                                // 对于回绕突发传输，addr 必须对齐
+    Upper_Wrap_Boundary = Lower_Wrap_Boundary + dtsize;
+
+for n = 1 to Burst_Length
+    Lower_Byte_Lane = addr - (INT(addr/Data_Bus_Bytes)) * Data_Bus_Bytes;
+    if aligned then
+        Upper_Byte_Lane = Lower_Byte_Lane + Number_Bytes - 1
+    else
+        Upper_Byte_Lane = Aligned_Address + Number_Bytes - 1
+                          - (INT(addr/Data_Bus_Bytes)) * Data_Bus_Bytes;
+
+    // 执行数据传输
+    if IsWrite then
+        dwrite(addr, low_byte, high_byte)
+    else
+        dread(addr, low_byte, high_byte);
+
+    // 必要时递增地址
+    if mode != FIXED then
+        if aligned then
+            addr = addr + Number_Bytes;
+            if mode == WRAP then
+                // WRAP 模式始终对齐
+                if addr >= Upper_Wrap_Boundary then addr = Lower_Wrap_Boundary;
+        else
+            addr = Aligned_Address + Number_Bytes;
+            aligned = TRUE;                    // 第一次传输之后的所有传输均对齐
+
+return;
+```
+
+> **原文（English）**
+>
+> // DataTransfer()
+> // ==============
+>
+> DataTransfer(Start_Address, Number_Bytes, Burst_Length, Data_Bus_Bytes, Mode, IsWrite)
+>
+> // Data_Bus_Bytes is the number of 8-bit byte lanes in the bus
+> // Mode is the AXI transfer mode
+> // IsWrite is TRUE for a write, and FALSE for a read
+>
+> assert Mode IN {FIXED, WRAP, INCR};
+>
+> addr = Start_Address; // Variable for current address
+> Aligned_Address = (INT(addr/Number_Bytes) * Number_Bytes);
+> aligned = (Aligned_Address == addr); // Check whether addr is aligned to nbytes
+> dtsize = Number_Bytes * Burst_Length; // Maximum total data transaction size
+>
+> if mode == WRAP then
+>     Lower_Wrap_Boundary = (INT(addr/dtsize) * dtsize);
+>     // addr must be aligned for a wrapping burst
+>     Upper_Wrap_Boundary = Lower_Wrap_Boundary + dtsize;
+>
+> for n = 1 to Burst_Length
+>     Lower_Byte_Lane = addr - (INT(addr/Data_Bus_Bytes)) * Data_Bus_Bytes;
+>     if aligned then
+>         Upper_Byte_Lane = Lower_Byte_Lane + Number_Bytes - 1
+>     else
+>         Upper_Byte_Lane = Aligned_Address + Number_Bytes - 1
+>                           - (INT(addr/Data_Bus_Bytes)) * Data_Bus_Bytes;
+>
+>     // Peform data transfer
+>     if IsWrite then
+>         dwrite(addr, low_byte, high_byte)
+>     else
+>         dread(addr, low_byte, high_byte);
+>
+>     // Increment address if necessary
+>     if mode != FIXED then
+>         if aligned then
+>             addr = addr + Number_Bytes;
+>             if mode == WRAP then
+>                 // WRAP mode is always aligned
+>                 if addr >= Upper_Wrap_Boundary then addr = Lower_Wrap_Boundary;
+>         else
+>             addr = Aligned_Address + Number_Bytes;
+>             aligned = TRUE; // All transfers after the first are aligned
+>
+> return;
+
+### A3.4.3 Regular transaction / Regular transactions
+
+Transaction 的突发类型、大小和长度有许多选项。不过，某些接口和 transaction 类型可能只使用这些选项的一个子集。如果某个 Slave 组件连接到只使用 transaction 选项子集的 Master，则可使用简化的解码逻辑设计该 Slave 组件。
+
+> **原文（English）**
+>
+> There are many options of burst, size, and length for a transaction. However, some interfaces and transaction types might only use a subset of these options. If a slave component is attached to a master which uses only a subset of transaction options, it can be designed with simplified decode logic.
+
+定义 Regular 属性，用于标识满足以下条件的 transaction：
+
+- `AxLEN` 为 1、2、4、8 或 16。
+- 如果 `AxLEN` 大于 1，则 `AxSIZE` 与数据总线宽度相同。
+- `AxBURST` 为 INCR 或 WRAP，而不是 FIXED。
+- 对于 INCR transaction，`AxADDR` 与 transaction 容器对齐。
+- 对于 WRAP transaction，`AxADDR` 与 `AxSIZE` 对齐。
+
+> **原文（English）**
+>
+> The Regular attribute is defined, to identify transactions which meet the following criteria:
+>
+> - AxLEN is 1, 2, 4, 8, or 16.
+> - AxSIZE is the same as the data bus width, if AxLEN is greater than 1.
+> - AxBURST is INCR or WRAP, not FIXED.
+> - AxADDR is aligned to the transaction container for INCR transactions.
+> - AxADDR is aligned to AxSIZE for WRAP transactions.
+
+#### Regular transaction 属性 / Regular transactions property
+
+`Regular_Transactions_Only` 属性用于定义 Master 是否仅发出 Regular 类型的 transaction，以及 Slave 是否仅支持 Regular transaction：
+
+`TRUE`  仅支持 Regular transaction。
+
+`FALSE`  支持 `AxBURST`、`AxSIZE` 和 `AxLEN` 的所有合法组合。
+
+> **原文（English）**
+>
+> The Regular_Transactions_Only property is used to define whether a master issues only Regular type transactions and if a slave only supports Regular transactions:
+>
+> TRUE Only Regular transactions are supported.
+>
+> FALSE All legal combinations of AxBURST, AxSIZE, and AxLEN are supported.
+
+如果未声明 `Regular_Transactions_Only`，则将其视为 False。
+
+> **原文（English）**
+>
+> If Regular_Transactions_Only is not declared, it is considered to be False.
+
+对于以下接口，`Regular_Transactions_Only` 属性可以为 True：
+
+- AXI5。
+- ACE5。
+- ACE5-Lite。
+- ACE5-LiteDVM。
+
+> **原文（English）**
+>
+> The Regular_Transactions_Only property can be True for the following interfaces:
+>
+> - AXI5
+> - ACE5
+> - ACE5-Lite
+> - ACE5-LiteDVM
+
+#### 互操作性 / Interoperability
+
+表 A3-4 给出了连接属性值不同的 Master 和 Slave 组件时适用的指导。
+
+> **原文（English）**
+>
+> Table A3-4 gives guidance applies for connecting master and slave components with different property values:
+
+![表 A3-4：Regular_Transactions_Only 互操作性](image/axi-a3/table-a3-4-regular-transactions-only-interoperability.png)
+
+> **原文表题（English）**：Table A3-4 Regular_Transactions_Only Interoperability
+
+### A3.4.4 数据读写结构 / Data read and write structure
+
+本节说明 AXI 读写数据总线上不同大小的传输，以及接口如何执行混合端序和非对齐传输。本节包含以下各节：
+
+- 写选通。
+- 窄传输。
+- 字节不变性，见第 A3-55 页。
+- 非对齐传输，见第 A3-56 页。
+
+> **原文（English）**
+>
+> This section describes the transfers of varying sizes on the AXI read and write data buses and how the interface performs mixed-endian and unaligned transfers. It contains the following sections:
+>
+> - Write strobes
+> - Narrow transfers
+> - Byte invariance on page A3-55
+> - Unaligned transfers on page A3-56
+
+#### 写选通 / Write strobes
+
+`WSTRB[n:0]` 信号为 HIGH 时，指定数据总线上包含有效信息的字节通道。写数据总线每 8 位对应一个写选通信号，因此 `WSTRB[n]` 对应 `WDATA[(8n)+7:(8n)]`。
+
+> **原文（English）**
+>
+> The WSTRB[n:0] signals when HIGH, specify the byte lanes of the data bus that contain valid information. There is one write strobe for each 8 bits of the write data bus, therefore WSTRB[n] corresponds to WDATA[(8n)+7: (8n)].
+
+Master 必须确保，只有包含有效数据的字节通道所对应的写选通信号才为 HIGH。
+
+> **原文（English）**
+>
+> A master must ensure that the write strobes are HIGH only for byte lanes that contain valid data.
+
+
+当 `WVALID` 为 LOW 时，写选通信号可以取任意值，不过本规范建议将其驱动为 LOW 或保持为前一个值。
+
+> **原文（English）**
+>
+> When WVALID is LOW, the write strobes can take any value, although this specification recommends that they are either driven LOW or held at their previous value.
+
+#### 窄传输 / Narrow transfers
+
+当 Master 生成比其数据总线更窄的传输时，地址和控制信息决定该传输使用的字节通道：
+
+- 在递增或回绕突发传输中，突发传输的每个数据拍使用不同的字节通道。
+- 在固定突发传输中，每个数据拍都使用相同的字节通道。
+
+> **原文（English）**
+>
+> When a master generates a transfer that is narrower than its data bus, the address and control information determine the byte lanes that the transfer uses:
+>
+> - In incrementing or wrapping bursts, different byte lanes are used on each beat of the burst.
+> - In a fixed burst, the same byte lanes are used on each beat.
+
+图 A3-8 和第 A3-55 页的图 A3-9 给出了两个字节通道使用示例。阴影单元格表示不传输的字节。
+
+> **原文（English）**
+>
+> Figure A3-8 and Figure A3-9 on page A3-55 give two examples of byte lanes use. The shaded cells indicate bytes that are not transferred.
+
+图 A3-8 中：
+
+- 突发传输包含五次传输。
+- 起始地址为 0。
+- 每次传输为 8 位。
+- 传输在 32 位总线上进行。
+- 突发类型为 INCR。
+
+> **原文（English）**
+>
+> In Figure A3-8:
+>
+> - The burst has five transfers.
+> - The starting address is 0.
+> - Each transfer is 8 bits.
+> - The transfers are on a 32-bit bus.
+> - The burst type is INCR.
+
+![图 A3-8：8 位传输的窄传输示例](image/axi-a3/figure-a3-8-narrow-transfer-8-bit.png)
+
+> **原文图题（English）**：Figure A3-8 Narrow transfer example with 8-bit transfers
+
+图 A3-9 中：
+
+- 突发传输包含三次传输。
+- 起始地址为 4。
+- 每次传输为 32 位。
+- 传输在 64 位总线上进行。
+
+> **原文（English）**
+>
+> In Figure A3-9:
+>
+> - The burst has three transfers.
+> - The starting address is 4.
+> - Each transfer is 32 bits.
+> - The transfers are on a 64-bit bus.
+
+![图 A3-9：32 位传输的窄传输示例](image/axi-a3/figure-a3-9-narrow-transfer-32-bit.png)
+
+> **原文图题（English）**：Figure A3-9 Narrow transfer example with 32-bit transfers
+
+#### 字节不变性 / Byte invariance
+
+为了在单个存储空间中访问混合端序数据结构，AXI 协议使用字节不变端序方案。
+
+> **原文（English）**
+>
+> To access mixed-endian data structures in a single memory space, the AXI protocol uses a byte-invariant endianness scheme.
+
+字节不变端序意味着，对于数据结构中的任何多字节元素：
+
+- 无论数据采用何种端序，该元素都使用相同的一组连续存储字节。
+- 端序决定这些字节在存储器中的次序，即决定存储器中的第一个字节是该元素的最高有效字节（MSB）还是最低有效字节（LSB）。
+- 无论某个字节属于何种端序的更大数据元素，对某地址的任何字节传输，都会在相同的数据总线导线上将这 8 位数据传送到相同的地址位置。
+
+> **原文（English）**
+>
+> Byte-invariant endianness means that, for any multi-byte element in a data structure:
+>
+> - The element uses the same continuous bytes of memory, regardless of the endianness of the data.
+> - The endianness determines the order of those bytes in memory, meaning it determines whether the first byte in memory is the most significant byte (MSB) or the least significant byte (LSB) of the element.
+> - Any byte transfer to an address passes the 8 bits of data on the same data bus wires, to the same address location, regardless of the endianness of any larger data element that it is a constituent of.
+
+仅有一种传输宽度的组件，其字节通道必须连接到数据总线的相应字节通道。支持多种传输宽度的组件可能需要更复杂的接口，才能将天然不具备字节不变性的接口转换为字节不变接口。
+
+> **原文（English）**
+>
+> Components that have only one transfer width must have their byte lanes that are connected to the appropriate byte lanes of the data bus. Components that support multiple transfer widths might require a more complex interface to convert an interface that is not naturally byte-invariant.
+
+
+大多数小端组件可以直接连接到字节不变接口。仅支持大端传输的组件需要转换功能，才能实现字节不变操作。
+
+> **原文（English）**
+>
+> Most little-endian components can connect directly to a byte-invariant interface. Components that support only big-endian transfers require a conversion function for byte-invariant operation.
+
+图 A3-10 和第 A3-56 页的图 A3-11 展示了一个存储在寄存器和存储器中的 32 位数 `0x0A0B0C0D`。
+
+> **原文（English）**
+>
+> The examples in Figure A3-10 and on page A3-56 show a 32-bit number 0x0A0B0C0D, stored in a register and in a memory.
+
+图 A3-10 展示了大端、字节不变数据结构的示例。在该结构中：
+
+- 数据的最高有效字节（MSB）`0x0A` 存储在寄存器的 MSB 位置。
+- 数据的 MSB 存储在地址最低的存储位置。
+- 其他数据字节按有效性递减的顺序排列。
+
+> **原文（English）**
+>
+> Figure A3-10 shows an example of the big-endian, byte-invariant, data structure. In this structure:
+>
+> - The most significant byte (MSB) of the data, which is 0x0A, is stored in the MSB position in the register.
+> - The MSB of the data is stored in the memory location with the lowest address.
+> - The other data bytes are positioned in decreasing order of significance.
+
+![图 A3-10：大端字节不变数据结构示例](image/axi-a3/figure-a3-10-big-endian-byte-invariant.png)
+
+> **原文图题（English）**：Figure A3-10 Example big-endian byte-invariant data structure
+
+图 A3-11 展示了小端、字节不变数据结构的示例。在该结构中：
+
+- 数据的最低有效字节（LSB）`0x0D` 存储在寄存器的 LSB 位置。
+- 数据的 LSB 存储在地址最低的存储位置。
+- 其他数据字节按有效性递增的顺序排列。
+
+> **原文（English）**
+>
+> Figure A3-11 shows an example of the little-endian, byte-invariant, data structure. In this structure:
+>
+> - The least significant byte (LSB) of the data, which is 0x0D, is stored in the LSB position in the register.
+> - The LSB of the data is stored in the memory location with the lowest address.
+> - The other data bytes are positioned in increasing order of significance.
+
+![图 A3-11：小端字节不变数据结构示例](image/axi-a3/figure-a3-11-little-endian-byte-invariant.png)
+
+> **原文图题（English）**：Figure A3-11 Example little-endian byte-invariant data structure
+
+第 A3-55 页的图 A3-10 和图 A3-11 中的示例表明，字节不变性确保大端和小端结构可以共存于同一个存储空间而不会损坏数据。图 A3-12 展示了需要字节不变访问的数据结构示例。在该示例中，头部字段使用小端次序，有效载荷使用大端次序。
+
+> **原文（English）**
+>
+> The examples in Figure A3-10 on page A3-55 and Figure A3-11 show that byte invariance ensures that big-endian and little-endian structures can coexist in a single memory space without corruption. Figure A3-12 shows an example of a data structure that requires byte-invariant access. In this example, the header fields use little-endian ordering, and the payload uses big-endian ordering.
+
+![图 A3-12：混合端序数据结构示例](image/axi-a3/figure-a3-12-mixed-endian-data-structure.png)
+
+> **原文图题（English）**：Figure A3-12 Example mixed-endian data structure
+
+例如，在该结构中，数据项是一个双字节小端元素，这意味着其最低地址是其 LSB。使用字节不变性可以确保对有效载荷的大端访问不会损坏这个小端元素。
+
+> **原文（English）**
+>
+> In this structure, for example, Data items is a two-byte little-endian element, meaning its lowest address is its LSB. The use of byte invariance ensures that a big-endian access to the payload does not corrupt the little-endian element.
+
+#### 非对齐传输 / Unaligned transfers
+
+AXI 支持非对齐传输。对于由宽于 1 字节的数据传输组成的任何突发传输，最先访问的字节可能未与自然地址边界对齐。例如，从字节地址 `0x1002` 开始的 32 位数据包未与自然的 32 位地址边界对齐。
+
+> **原文（English）**
+>
+> AXI supports unaligned transfers. For any burst that is made up of data transfers wider than 1 byte, the first bytes accessed might be unaligned with the natural address boundary. For example, a 32-bit data packet that starts at a byte address of 0x1002 is not aligned to the natural 32-bit address boundary.
+
+Master 可以：
+
+- 使用低位地址线指示非对齐起始地址。
+- 提供对齐地址，并使用字节通道选通信号指示非对齐起始地址。
+
+> **原文（English）**
+>
+> A master can:
+>
+> - Use the low-order address lines to signal an unaligned start address.
+> - Provide an aligned address and use the byte lane strobes to signal the unaligned start address.
+
+> **注（Note）**
+>
+> 低位地址线上的信息必须与字节通道选通信号上的信息一致。
+
+> **原文（English）**
+>
+> The information on the low-order address lines must be consistent with the information on the byte lane strobes.
+
+
+不要求 Slave 根据来自 Master 的任何对齐信息采取特殊操作。
+
+> **原文（English）**
+>
+> The slave is not required to take special action based on any alignment information from the master.
+
+
+图 A3-13 展示了在 32 位总线上进行对齐和非对齐 32 位传输的递增突发传输示例。图中的每一行表示一次传输，阴影单元格表示不传输的字节。
+
+> **原文（English）**
+>
+> Figure A3-13 shows examples of incrementing bursts, with aligned and unaligned 32-bit transfers, on a 32-bit bus. Each row in the figure represents a transfer and the shaded cells indicate bytes that are not transferred.
+
+![图 A3-13：32 位总线上的对齐与非对齐传输](image/axi-a3/figure-a3-13-aligned-unaligned-32-bit-bus.png)
+
+> **原文图题（English）**：Figure A3-13 Aligned and unaligned transfers on a 32-bit bus
+
+图 A3-14 展示了在 64 位总线上进行对齐和非对齐 32 位传输的递增突发传输示例。图中的每一行表示一次传输，阴影单元格表示不传输的字节。
+
+> **原文（English）**
+>
+> Figure A3-14 shows examples of incrementing bursts, with aligned and unaligned 32-bit transfers, on a 64-bit bus. Each row in the figure represents a transfer and the shaded cells indicate bytes that are not transferred.
+
+![图 A3-14：64 位总线上的对齐与非对齐传输](image/axi-a3/figure-a3-14-aligned-unaligned-64-bit-bus.png)
+
+> **原文图题（English）**：Figure A3-14 Aligned and unaligned transfers on a 64-bit bus
+
+图 A3-15 展示了在 64 位总线上进行对齐 32 位传输的回绕突发传输示例。图中的每一行表示一次传输，阴影单元格表示不传输的字节。
+
+> **原文（English）**
+>
+> Figure A3-15 shows an example of a wrapping burst, with aligned 32-bit transfers, on a 64-bit bus. Each row in the figure represents a transfer and the shaded cells indicate bytes that are not transferred.
+
+![图 A3-15：64 位总线上的对齐回绕传输](image/axi-a3/figure-a3-15-aligned-wrapping-64-bit-bus.png)
+
+> **原文图题（English）**：Figure A3-15 Aligned wrapping transfers on a 64-bit bus
+
+### A3.4.5 读写响应结构 / Read and write response structure
+
+AXI 协议为读 transaction 和写 transaction 都提供响应信号：
+
+- 对于读 transaction，Slave 的响应信息在读数据通道上发出。
+- 对于写 transaction，响应信息在写响应通道上发出。
+
+> **原文（English）**
+>
+> The AXI protocol provides response signaling for both read and write transactions:
+>
+> - For read transactions, the response information from the slave is signaled on the read data channel.
+> - For write transactions the response information is signaled on the write response channel.
+
+响应由以下信号给出：
+
+- 对于读传输，为 `RRESP[1:0]`。
+- 对于写传输，为 `BRESP[1:0]`。
+
+> **原文（English）**
+>
+> The responses are signaled by:
+>
+> - RRESP[1:0], for read transfers.
+> - BRESP[1:0], for write transfers.
+
+响应为：
+
+`OKAY`  普通访问成功。表示一次普通访问已成功。也可以表示一次独占访问失败。参见“OKAY，普通访问成功”。
+
+`EXOKAY`  独占访问成功。表示独占访问的读部分或写部分已成功。参见第 A3-60 页“EXOKAY，独占访问成功”。
+
+`SLVERR`  Slave 错误。当访问已成功到达 Slave，但 Slave 希望向发起访问的 Master 返回错误条件时使用。参见第 A3-60 页“SLVERR，Slave 错误”。
+
+`DECERR`  解码错误。通常由互连组件生成，表示 transaction 地址上不存在 Slave。参见第 A3-60 页“DECERR，解码错误”。
+
+> **原文（English）**
+>
+> The responses are:
+>
+> OKAY Normal access success. Indicates that a normal access has been successful. Can also indicate that an exclusive access has failed. See OKAY, normal access success.
+>
+> EXOKAY Exclusive access okay. Indicates that either the read or write portion of an exclusive access has been successful. See EXOKAY, exclusive access success on page A3-60.
+>
+> SLVERR Slave error. Used when the access has reached the slave successfully, but the slave wishes to return an error condition to the originating master. See SLVERR, slave error on page A3-60.
+>
+> DECERR Decode error. Generated, typically by an interconnect component, to indicate that there is no slave at the transaction address. See DECERR, decode error on page A3-60.
+
+表 A3-5 给出了 `RRESP` 和 `BRESP` 信号的编码。
+
+> **原文（English）**
+>
+> Table A3-5 shows the encoding of the RRESP and BRESP signals.
+
+![表 A3-5：RRESP 和 BRESP 编码](image/axi-a3/table-a3-5-rresp-bresp-encoding.png)
+
+> **原文表题（English）**：Table A3-5 RRESP and BRESP encoding
+
+对于写 transaction，整个突发传输只发出一个响应，而不是为突发传输中的每次数据传输分别发出响应。
+
+> **原文（English）**
+>
+> For a write transaction, a single response is signaled for the entire burst, and not for each data transfer within the burst.
+
+
+在读 transaction 中，Slave 可以为突发传输中的不同传输给出不同响应。例如，在包含 16 次读传输的突发传输中，Slave 可以为其中 15 次传输返回 `OKAY` 响应，并为其中一次传输返回 `SLVERR` 响应。
+
+> **原文（English）**
+>
+> In a read transaction, the slave can signal different responses for different transfers in a burst. For example, in a burst of 16 read transfers the slave might return an OKAY response for 15 of the transfers and a SLVERR response for one of the transfers.
+
+协议规定，即使报告错误，也必须执行所要求数量的数据传输。例如，如果请求从某个 Slave 读取八次传输的数据，而该 Slave 存在错误条件，则 Slave 必须执行八次数据传输，并且每次都给出错误响应。Slave 给出单个错误响应时，不会取消突发传输的剩余部分。
+
+> **原文（English）**
+>
+> The protocol specifies that the required number of data transfers must be performed, even if an error is reported. For example, if a read of eight transfers is requested from a slave but the slave has an error condition, the slave must perform eight data transfers, each with an error response. The remainder of the burst is not canceled if the slave gives a single error response.
+
+
+#### OKAY，普通访问成功 / OKAY, normal access success
+
+`OKAY` 响应表示以下任一种情况：
+
+- 普通访问成功。
+- 独占访问失败。
+- 对不支持独占访问的 Slave 进行独占访问。
+
+> **原文（English）**
+>
+> An OKAY response indicates any one of the following:
+>
+> - The success of a normal access.
+> - The failure of an exclusive access.
+> - An exclusive access to a slave that does not support exclusive access.
+
+`OKAY` 是大多数 transaction 的响应。
+
+> **原文（English）**
+>
+> OKAY is the response for most transactions.
+
+#### EXOKAY，独占访问成功 / EXOKAY, exclusive access success
+
+`EXOKAY` 响应表示独占访问成功。只能将该响应作为独占读或独占写的响应。参见第 A7-96 页“独占访问”。
+
+> **原文（English）**
+>
+> An EXOKAY response indicates the success of an exclusive access. This response can only be given as the response to an exclusive read or write. See Exclusive accesses on page A7-96.
+
+
+#### SLVERR，Slave 错误 / SLVERR, slave error
+
+`SLVERR` 响应表示一次不成功的 transaction。
+
+> **原文（English）**
+>
+> The SLVERR response indicates an unsuccessful transaction.
+
+为了简化系统监控和调试，本规范建议仅将错误响应用于错误条件，而不用于指示正常的预期事件。Slave 错误条件示例包括：
+
+- FIFO 或缓冲区上溢或下溢条件。
+- 尝试使用不受支持的传输大小。
+- 尝试对只读位置进行写访问。
+- Slave 中出现超时条件。
+- 尝试访问已禁用或已断电的功能。
+
+> **原文（English）**
+>
+> To simplify system monitoring and debugging, this specification recommends that error responses are used only for error conditions and not for signaling normal, expected events. Examples of slave error conditions are:
+>
+> - FIFO or buffer overrun or underrun condition
+> - Unsupported transfer size attempted.
+> - Write access attempted to read-only location
+> - Timeout condition in the slave
+> - Access attempted to a disabled or powered-down function
+
+#### DECERR，解码错误 / DECERR, decode error
+
+`DECERR` 响应表示互连无法成功解码一次 Slave 访问。
+
+> **原文（English）**
+>
+> The DECERR response indicates that the interconnect cannot successfully decode a slave access.
+
+如果互连无法成功解码一次 Slave 访问，则必须返回 `DECERR` 响应。本规范建议互连将该访问路由到默认 Slave，并由默认 Slave 返回 `DECERR` 响应。
+
+> **原文（English）**
+>
+> If the interconnect cannot successfully decode a slave access, it must return the DECERR response. This specification recommends that the interconnect routes the access to a default slave, and the default slave returns the DECERR response.
+
+AXI 协议要求，即使出现错误条件，也要完成一个 transaction 的所有数据传输。任何给出 `DECERR` 响应的组件都必须满足此要求。
+
+> **原文（English）**
+>
+> The AXI protocol requires that all data transfers for a transaction are completed, even if an error condition occurs. Any component giving a DECERR response must meet this requirement.

@@ -5,6 +5,8 @@
 Thumbs.db
 .DS_Store
 tmp/pdfs/a2-source/
+tmp/pdfs/a3-source/
+tmp/pdfs/a3-output/
 
 # Python 生成缓存
 __pycache__/

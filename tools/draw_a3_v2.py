@@ -101,7 +101,7 @@ def timing(name,title,rows,events,notes,rule,assumption,reset=False):
                 if val=='—': fig.line([(x1,y+18),(x2,y+18)],'#777777',width=2)
                 else:
                     fig.line([(x1,y+18),(x1+9,y),(x2-9,y),(x2,y+18),(x2-9,y+36),(x1+9,y+36),(x1,y+18)],width=2)
-                    fig.text(x1+5,y-6,x2-x1-10,48,str(val),32)
+                    fig.text(x1+5,y-6,x2-x1-10,48,str(val),20 if kind == 'bus' else 32)
     if reset:
         fig.text(left,bottom-25,split-left,50,'复位有效',32,BLUE,True)
         fig.text(split,bottom-25,right-split,50,'复位已释放：正常工作',32,GREEN,True)
@@ -113,6 +113,217 @@ def timing(name,title,rows,events,notes,rule,assumption,reset=False):
     fig.box(30,bottom+210,1380,90,rule,'#ffffff',BLUE,32,BLUE,True,True)
     fig.box(30,bottom+325,1380,75,assumption,'#ffffff','#888888',32)
     fig.save();SCENARIOS.append({'name':name,'rows':rows,'events':events})
+
+
+def supplemental_awvalid_hold_until_awready():
+    """AW-specific reuse of the existing VALID-first handshake timing diagram."""
+    timing(
+        'supplemental-awvalid-hold-until-awready',
+        '写地址通道：AWVALID 等待 AWREADY 时必须保持',
+        [
+            ('AWVALID', [0, 1, 1, 1, 0], 'bit'),
+            ('AWREADY', [0, 0, 0, 1, 1], 'bit'),
+            ('AWADDR /\nAW 控制', ['—', '地址与控制 A', '地址与控制 A', '地址与控制 A', '—'], 'bus'),
+        ],
+        {2: 'wait', 3: 'wait', 4: 'ok'},
+        [
+            ('T2、T3：继续等待\nAWVALID=1，AWREADY=0', 'wait'),
+            ('T4：成功握手\n地址与控制 A 只传输一次', 'ok'),
+        ],
+        'AWVALID 一旦置位，在握手完成前不得撤销；AWADDR 和其他 AW 控制字段也必须保持稳定。',
+        'Master 驱动 AWVALID 和 AW 通道载荷；Slave 驱动 AWREADY。补充图（非原文图）',
+    )
+
+
+def supplemental_wchannel_requirements():
+    """W-channel timing example covering hold, backpressure, WLAST, and inactive bytes."""
+    timing(
+        'supplemental-wchannel-requirements',
+        '写数据通道：WVALID、WREADY、WLAST 与不活动字节',
+        [
+            ('WVALID', [0, 1, 1, 1, 1, 1, 1, 0], 'bit'),
+            ('WREADY', [0, 0, 1, 0, 1, 1, 1, 1], 'bit'),
+            ('WDATA\n（不活动字节置 0）', ['—', '0x000000A1', '0x000000A1', '0x0000B2C3', '0x0000B2C3', '0x00D4E5F6', '0x12345678', '—'], 'bus'),
+            ('WLAST', [0, 0, 0, 0, 0, 0, 1, 0], 'bit'),
+        ],
+        {2: 'wait', 4: 'wait', 3: 'ok', 5: 'ok', 6: 'ok', 7: 'ok'},
+        [
+            ('T2、T4：等待\nWVALID=1，WREADY=0\n数据保持不变', 'wait'),
+            ('T3、T5、T6：\n完成前 3 次 W 传输', 'ok'),
+            ('T7：WLAST=1\n完成最后一次 W 传输', 'ok'),
+        ],
+        '只在 WVALID 与 WREADY 同为 1 的上升沿完成一次写数据传输；等待期间 WVALID 和 WDATA 必须保持，最后一拍置位 WLAST，不活动字节的 WDATA 驱动为 0。',
+        '示例为 4 拍写数据；T2、T4 发生反压。补充图（非原文图）',
+    )
+
+
+def supplemental_bchannel_requirements():
+    """B-channel timing example covering response hold and BREADY default behavior."""
+    timing(
+        'supplemental-bchannel-requirements',
+        '写响应通道：BVALID、BREADY 与 BRESP',
+        [
+            ('BVALID', [0, 1, 1, 1, 0], 'bit'),
+            ('BREADY', [0, 0, 0, 1, 1], 'bit'),
+            ('BRESP', ['—', 'SLVERR', 'SLVERR', 'SLVERR', '—'], 'bus'),
+        ],
+        {2: 'wait', 3: 'wait', 4: 'ok'},
+        [
+            ('T2、T3：等待\nBVALID=1，BREADY=0\nBRESP 保持不变', 'wait'),
+            ('T4：成功握手\nBRESP 只传输一次', 'ok'),
+        ],
+        'Slave 只有在拥有有效写响应时才能置位 BVALID；置位后必须保持 BVALID 和 BRESP，直到 BREADY=1 的上升沿。Master 若能单周期接收响应，BREADY 可默认置为 HIGH。',
+        'Slave 驱动 BVALID 和 BRESP；Master 驱动 BREADY。补充图（非原文图）',
+    )
+
+
+def supplemental_multi_beat_write_response():
+    """Show that one response follows the final transfer of a multi-beat write burst."""
+    timing(
+        'supplemental-multi-beat-write-response',
+        '4 拍写数据：写响应必须在最后一拍之后',
+        [
+            ('WVALID', [1, 1, 1, 1, 1, 0, 0], 'bit'),
+            ('WREADY', [1, 1, 0, 1, 1, 1, 1], 'bit'),
+            ('WDATA', ['D0', 'D1', 'D2', 'D2', 'D3', '—', '—'], 'bus'),
+            ('WLAST', [0, 0, 0, 0, 1, 0, 0], 'bit'),
+            ('BVALID', [0, 0, 0, 0, 0, 1, 0], 'bit'),
+            ('BREADY', [1, 1, 1, 1, 1, 1, 1], 'bit'),
+            ('BRESP', ['—', '—', '—', '—', '—', 'OKAY', '—'], 'bus'),
+        ],
+        {1: 'ok', 2: 'ok', 3: 'wait', 4: 'ok', 5: 'ok', 6: 'ok'},
+        [
+            ('T1～T2：完成 D0、D1\n前两次 W 握手', 'ok'),
+            ('T3：WREADY=0\nD2 保持，未发生传输', 'wait'),
+            ('T4：D2 握手\nT5：D3 末拍\nWLAST=1', 'ok'),
+            ('T6：BVALID=1\n返回唯一一份写响应', 'ok'),
+        ],
+        'T5 的 WVALID、WREADY、WLAST 同时为 1，表示最后一次写传输完成；BVALID 在此之前必须保持为 0，只能在其后返回写响应。',
+        '示例为 AWLEN=3 的 4 拍写 transaction；写地址已在 T1 之前完成握手；BREADY 始终为 1。补充图（非原文图）',
+    )
+
+
+def supplemental_read_data_after_address():
+    """Show that read data follows the corresponding read-address handshake."""
+    timing(
+        'supplemental-read-data-after-address',
+        '2 拍读数据：必须在读地址之后',
+        [
+            ('ARVALID', [0, 1, 0, 0, 0, 0, 0], 'bit'),
+            ('ARREADY', [1, 1, 1, 1, 1, 1, 1], 'bit'),
+            ('ARADDR', ['—', '地址 A', '—', '—', '—', '—', '—'], 'bus'),
+            ('RVALID', [0, 0, 1, 1, 1, 1, 0], 'bit'),
+            ('RREADY', [1, 1, 1, 0, 0, 1, 1], 'bit'),
+            ('RDATA', ['—', '—', 'D0', 'D1', 'D1', 'D1', '—'], 'bus'),
+            ('RLAST', [0, 0, 0, 1, 1, 1, 0], 'bit'),
+        ],
+        {2: 'ok', 3: 'ok', 4: 'wait', 5: 'wait', 6: 'ok'},
+        [
+            ('T2：AR 握手\n接收读地址 A', 'ok'),
+            ('T3：D0 握手\n返回第 1 拍', 'ok'),
+            ('T4～T5：反压\nD1、RLAST 保持', 'wait'),
+            ('T6：D1 握手\nRLAST=1，读完成', 'ok'),
+        ],
+        'T2 先完成读地址握手，Slave 才能在其后返回对应的读数据；末拍必须等到 RVALID、RREADY、RLAST 同为 1 的上升沿才完成。',
+        'ARLEN=1（2 拍）；RRESP=OKAY；T4～T5 反压。补充图（非原文图）',
+    )
+
+
+def supplemental_archannel_requirements():
+    """AR-channel timing example covering address hold and ARREADY behavior."""
+    timing(
+        'supplemental-archannel-requirements',
+        '读地址通道：ARVALID、ARREADY 与地址控制保持',
+        [
+            ('ARVALID', [0, 1, 1, 1, 0], 'bit'),
+            ('ARREADY', [0, 0, 0, 1, 1], 'bit'),
+            ('ARADDR /\nAR 控制', ['—', '地址 B', '地址 B', '地址 B', '—'], 'bus'),
+        ],
+        {2: 'wait', 3: 'wait', 4: 'ok'},
+        [
+            ('T2、T3：继续等待\nARVALID=1，ARREADY=0', 'wait'),
+            ('T4：成功握手\n地址与控制 B 只传输一次', 'ok'),
+        ],
+        'ARVALID 一旦置位，在握手完成前不得撤销；ARADDR 和其他 AR 控制字段必须保持稳定。ARREADY 可默认 HIGH，但只有 Slave 能立即接收地址时才适用。',
+        'Master 驱动 ARVALID 和 AR 通道载荷；Slave 驱动 ARREADY。补充图（非原文图）',
+    )
+
+
+def supplemental_rchannel_requirements():
+    """R-channel timing example covering data hold, RLAST, and inactive bytes."""
+    timing(
+        'supplemental-rchannel-requirements',
+        '读数据通道：RVALID、RREADY、RLAST 与不活动字节',
+        [
+            ('RVALID', [0, 1, 1, 1, 1, 1, 1, 0], 'bit'),
+            ('RREADY', [0, 0, 0, 1, 1, 1, 1, 1], 'bit'),
+            ('RDATA\n（不活动字节置 0）', ['—', '0x000000A1', '0x000000A1', '0x000000A1', '0x0000B2C3', '0x00D4E5F6', '0x12345678', '—'], 'bus'),
+            ('RLAST', [0, 0, 0, 0, 0, 0, 1, 0], 'bit'),
+        ],
+        {2: 'wait', 3: 'wait', 4: 'ok', 5: 'ok', 6: 'ok', 7: 'ok'},
+        [
+            ('T2、T3：等待\nRVALID=1，RREADY=0\n数据保持不变', 'wait'),
+            ('T4、T5、T6：\n完成前 3 次 R 传输', 'ok'),
+            ('T7：RLAST=1\n完成最后一次 R 传输', 'ok'),
+        ],
+        '有效数据才置位 RVALID；RREADY=0 时保持 RVALID/RDATA；最后一拍置位 RLAST；不活动字节置 0；可立即接收时 RREADY 默认 HIGH。',
+        '读请求已经发起；Slave 驱动 RVALID、RDATA、RLAST；Master 驱动 RREADY。补充图（非原文图）',
+    )
+
+
+def supplemental_axi_ahb_burst_boundary_comparison():
+    """Compare the AXI 4KB and AHB 1KB incrementing-burst boundaries."""
+    fig = Figure(
+        'supplemental-axi-ahb-burst-boundary-comparison',
+        'AXI 4KB 与 AHB 1KB 突发边界对比',
+        1180,
+    )
+    fig.text(30, 92, 1380, 48, '地址空间示意图（位置不按比例）', 28, '#555555')
+
+    fig.box(330, 145, 210, 48, '合法 burst', PALE_GREEN, GREEN, 25, GREEN, True, True)
+    fig.box(615, 145, 210, 48, '跨界 burst', '#fdecec', '#c62828', 25, '#c62828', True, True)
+    fig.box(900, 145, 210, 48, '边界处分拆', PALE_ORANGE, ORANGE, 25, ORANGE, True, True)
+
+    # AXI 4KB regions and examples.
+    fig.text(35, 225, 185, 65, 'AXI\n4KB 边界', 32, BLUE, True)
+    fig.box(235, 215, 555, 100, '4KB 区域 0\n0x0000～0x0FFF', PALE_BLUE, BLUE, 29, BLUE, True, True)
+    fig.box(790, 215, 555, 100, '4KB 区域 1\n0x1000～0x1FFF', '#f5f8fb', BLUE, 29, BLUE, True, True)
+    fig.line([(790, 200), (790, 515)], '#c62828', True, width=2)
+    fig.text(805, 315, 160, 40, '边界 0x1000', 24, '#c62828', True)
+
+    fig.line([(350, 350), (590, 350)], GREEN, arrow=True, width=5)
+    fig.text(285, 365, 375, 75, '0x03F0 → 0x040F\n4 Byte × 8 拍：AXI 合法', 26, GREEN, True)
+    fig.text(560, 405, 450, 70, '0x0FF0 → 0x1003\n4 Byte × 5 拍：跨越 4KB，非法', 26, '#c62828', True)
+    fig.line([(650, 485), (920, 485)], '#c62828', arrow=True, width=5)
+
+    # AHB 1KB regions and the same eight-beat example.
+    fig.text(35, 585, 185, 65, 'AHB\n1KB 边界', 32, BLUE, True)
+    fig.box(235, 575, 555, 100, '1KB 区域 0\n0x0000～0x03FF', PALE_BLUE, BLUE, 29, BLUE, True, True)
+    fig.box(790, 575, 555, 100, '1KB 区域 1\n0x0400～0x07FF', '#f5f8fb', BLUE, 29, BLUE, True, True)
+    fig.line([(790, 560), (790, 830)], '#c62828', True, width=2)
+    fig.text(805, 675, 160, 40, '边界 0x0400', 24, '#c62828', True)
+
+    fig.line([(650, 715), (930, 715)], '#c62828', arrow=True, width=5)
+    fig.text(535, 730, 510, 75, '同一个 0x03F0 → 0x040F\n4 Byte × 8 拍：AHB 单 burst 非法', 26, '#c62828', True)
+    fig.line([(645, 830), (780, 830)], ORANGE, arrow=True, width=5)
+    fig.line([(800, 830), (940, 830)], ORANGE, arrow=True, width=5)
+    fig.box(625, 850, 335, 90, '在 0x0400 分拆\n前 4 拍 + 后 4 拍', PALE_ORANGE, ORANGE, 27, ORANGE, True, True)
+
+    fig.box(
+        30,
+        970,
+        1380,
+        115,
+        '4KB / 1KB 是地址译码边界，不是传输大小。跨界请求必须由发起端或桥接组件拆成多个合法 burst。',
+        '#ffffff',
+        BLUE,
+        30,
+        BLUE,
+        True,
+        True,
+    )
+    fig.text(30, 1100, 1380, 45, '补充图（非 Arm 原文图）', 25, '#777777')
+    fig.save()
 
 
 def table(name,title,headers,rows,widths,footer):

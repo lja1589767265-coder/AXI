@@ -1,6 +1,6 @@
 # AXI 协议翻译与学习资料记录
 
-本仓库用于整理 AMBA AXI 协议中文翻译、旧版学习导读、设计示例和验证实践。A1、A2 已按忠实翻译规范重新制作，A3 暂时保留为旧版学习导读；从 A5 及后续章节开始，正文按照忠实翻译规范制作。
+本仓库用于整理 AMBA AXI 协议中文翻译、旧版学习导读、设计示例和验证实践。A1、A2、A3 已按忠实翻译规范重新制作，其中 A1、A3 采用全文中英双语对照；从 A5 及后续章节开始，正文同样按照忠实翻译规范制作。
 
 ## 个人学习进度
 
@@ -15,9 +15,11 @@
 | [ARM IHI 0022H AMBA AXI and ACE Protocol Specification 结构目录](ARM_IHI_0022H_AMBA_AXI_and_ACE_Protocol_Specification结构目录.md) | 介绍 IHI 0022H 的 Preface、Part A～G 及推荐学习顺序 | 已完成 |
 | [A1：简介](ARM_IHI_0022H_AMBA_AXI_and_ACE_Protocol_Specification_A1.md) | 按 PDF 原文顺序制作 A1.1～A1.3.4 全文中英双语对照，含 3 张原图双语重绘和 6 张补充结构/时序图（包括寄存器切片结构图） | 已完成（全文双语稿） |
 | [AXI 写事务动态时序演示](axi-write-timing-demo.html) | AXI 动态时序图的交互原型；后续以此为统一基础，扩展读写事务、握手、背压、突发传输和多笔未完成事务等时序场景 | 原型阶段 |
-| [README 翻译文档制作规范](README写作规范.md) | 规定忠实翻译、全文双语例外、英文术语括注、补充图边界、draw.io 重绘和逐项验收方法 | 已更新（A5 起执行） |
+| [README 翻译文档制作规范](README写作规范.md) | 规定忠实翻译、全文双语例外、英文术语括注、补充图边界、draw.io 重绘和逐项验收方法 | 已更新 |
 | [A2：信号说明](ARM_IHI_0022H_AMBA_AXI_and_ACE_Protocol_Specification_A2.md) | 按 PDF 原文顺序完整翻译 A2.1～A2.6，含表 A2-1～表 A2-6 的 draw.io 中文重绘 | 已完成（忠实翻译稿） |
-| [A3：AXI 单接口要求](ARM_IHI_0022H_AMBA_AXI_and_ACE_Protocol_Specification_A3.md) | 基于新笔记整理：时钟复位、握手依赖、突发地址与字节通道、Regular 属性和响应；含 13 张重绘图及 10 道自测题 | 已完成（旧版学习导读） |
+| [A3：单接口要求](ARM_IHI_0022H_AMBA_AXI_and_ACE_Protocol_Specification_A3.md) | 按 PDF 原文顺序制作 A3.1～A3.4.5 全文中英双语对照，含 15 幅原图、5 个原表的 draw.io 双语重绘和 8 幅补充讲解图（输入输出组合路径、复位信号要求、VALID 独立置位、AW/W/B/AR/R 通道要求）；[旧版学习导读](legacy/ARM_IHI_0022H_AMBA_AXI_and_ACE_Protocol_Specification_A3_learning-guide.md)已归档保留 | 已完成（全文双语稿） |
+| [复位同步释放专题](README_复位同步释放.md) | 面向初学者说明异步置位、同步释放的原理、通用时序，以及 AXI `ARESETn` 的退出复位要求 | 已完成 |
+| [AXI 4KB 与 AHB 1KB 突发边界专题](README_突发传输地址边界.md) | 解释 AXI 4KB 与 AHB 1KB 地址边界、合法性计算、跨界拆分及桥接转换差异 | 已完成 |
 | [A5：Transaction Identifiers](ARM_IHI_0022H_AMBA_AXI_and_ACE_Protocol_Specification_A5.md) | 按 PDF 原文顺序完整翻译 A5.1、A5.2 及 A5.2.1～A5.2.3，含表 A5-1 的 draw.io 中文重绘 | 已完成（忠实翻译稿） |
 | [A6：AXI 顺序模型](ARM_IHI_0022H_AMBA_AXI_and_ACE_Protocol_Specification_A6.md) | 按 PDF 原文顺序完整翻译 A6.1～A6.8；原章没有图表 | 已完成（忠实翻译稿） |
 | [A4：事务属性导读](ARM_IHI_0022H_AMBA_AXI_and_ACE_Protocol_Specification_A4.md) | 覆盖 A4 全章：AxCACHE、内存类型、缓冲、AxPROT 与 Device 写完成保证，含三幅教学图及自测 | 已完成 |
@@ -29,11 +31,11 @@
 3. 每章完成后逐项核对标题、段落、Note、Caution、列表、公式、图表、脚注和关键英文原句。
 4. 以 `axi-write-timing-demo.html` 为动态时序图基础，逐步建立可复用的场景和信号模型，用于生成各种 AXI 读写时序图。
 
-## AXI 翻译文档制作规范（A5 及后续）
+## AXI 翻译文档制作规范
 
 详细规则见 [README 翻译文档制作规范](README写作规范.md)。简要要求如下：
 
-1. 默认采用纯中文正文，只在关键规范句后附完全一致的英文原句；明确要求全文双语的章节逐段保留完整英文原文。
+1. 默认采用纯中文正文，只在关键规范句后附完全一致的英文原句；A1、A3 等明确要求全文双语的章节逐段保留完整英文原文。
 2. 严格保持原文的小节、段落、Note、Caution、列表、公式、图表和脚注顺序，不遗漏、不合并、不提前或重新组织。
 3. 省略每页重复的页眉、页脚、版权行和物理页码；正文中的实质性交叉引用必须保留。
 4. 不主动增加学习目标、教学案例、额外时序图、易错点、总结、自测题、黄色高亮或其他原文不存在的内容。
