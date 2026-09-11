@@ -1,10 +1,10 @@
 # AXI 协议翻译与学习资料记录
 
-本仓库用于整理 AMBA AXI 协议中文翻译、旧版学习导读、设计示例和验证实践。A1、A2、A3 已按忠实翻译规范重新制作，其中 A1、A3 采用全文中英双语对照；从 A5 及后续章节开始，正文同样按照忠实翻译规范制作。
+本仓库用于整理 AMBA AXI 协议中文翻译、旧版学习导读、设计示例和验证实践。A1、A3 已按全文中英双语体例完成；A2 保留历史版本，A4 待按新版默认规范重制；A5、A6 已有完整中文译稿。
 
 ## 个人学习进度
 
-- 截至 2026-09-10，已重点学习：A1、A2、A3、A5。
+- 截至 2026-09-11，已重点学习：A1、A2、A3、A4、A5。
 - A6 正在学习，尚未看完。
 - 除上述章节外，其他章节尚未开始系统学习。
 
@@ -15,14 +15,14 @@
 | [ARM IHI 0022H AMBA AXI and ACE Protocol Specification 结构目录](ARM_IHI_0022H_AMBA_AXI_and_ACE_Protocol_Specification结构目录.md) | 介绍 IHI 0022H 的 Preface、Part A～G 及推荐学习顺序 | 已完成 |
 | [A1：简介](ARM_IHI_0022H_AMBA_AXI_and_ACE_Protocol_Specification_A1.md) | 按 PDF 原文顺序制作 A1.1～A1.3.4 全文中英双语对照，含 3 张原图双语重绘和 6 张补充结构/时序图（包括寄存器切片结构图） | 已完成（全文双语稿） |
 | [AXI 写事务动态时序演示](axi-write-timing-demo.html) | AXI 动态时序图的交互原型；后续以此为统一基础，扩展读写事务、握手、背压、突发传输和多笔未完成事务等时序场景 | 原型阶段 |
-| [README 翻译文档制作规范](README写作规范.md) | 规定忠实翻译、全文双语例外、英文术语括注、补充图边界、draw.io 重绘和逐项验收方法 | 已更新 |
+| [README 翻译文档制作规范](README写作规范.md) | 规定默认全文双语、英文术语括注、补充图边界、draw.io 重绘和逐项验收方法 | 已更新 |
 | [A2：信号说明](ARM_IHI_0022H_AMBA_AXI_and_ACE_Protocol_Specification_A2.md) | 按 PDF 原文顺序完整翻译 A2.1～A2.6，含表 A2-1～表 A2-6 的 draw.io 中文重绘 | 已完成（忠实翻译稿） |
 | [A3：单接口要求](ARM_IHI_0022H_AMBA_AXI_and_ACE_Protocol_Specification_A3.md) | 按 PDF 原文顺序制作 A3.1～A3.4.5 全文中英双语对照，含 15 幅原图、5 个原表的 draw.io 双语重绘和 8 幅补充讲解图（输入输出组合路径、复位信号要求、VALID 独立置位、AW/W/B/AR/R 通道要求）；[旧版学习导读](legacy/ARM_IHI_0022H_AMBA_AXI_and_ACE_Protocol_Specification_A3_learning-guide.md)已归档保留 | 已完成（全文双语稿） |
 | [复位同步释放专题](README_复位同步释放.md) | 面向初学者说明异步置位、同步释放的原理、通用时序，以及 AXI `ARESETn` 的退出复位要求 | 已完成 |
 | [AXI 4KB 与 AHB 1KB 突发边界专题](README_突发传输地址边界.md) | 解释 AXI 4KB 与 AHB 1KB 地址边界、合法性计算、跨界拆分及桥接转换差异 | 已完成 |
+| [A4：transaction 属性](ARM_IHI_0022H_AMBA_AXI_and_ACE_Protocol_Specification_A4.md) | 已有中文译稿和表 A4-1～表 A4-6 重绘；待按新版默认规范补齐全文英文原文和双语图表 | 待重制（全文双语稿） |
 | [A5：Transaction Identifiers](ARM_IHI_0022H_AMBA_AXI_and_ACE_Protocol_Specification_A5.md) | 按 PDF 原文顺序完整翻译 A5.1、A5.2 及 A5.2.1～A5.2.3，含表 A5-1 的 draw.io 中文重绘 | 已完成（忠实翻译稿） |
 | [A6：AXI 顺序模型](ARM_IHI_0022H_AMBA_AXI_and_ACE_Protocol_Specification_A6.md) | 按 PDF 原文顺序完整翻译 A6.1～A6.8；原章没有图表 | 已完成（忠实翻译稿） |
-| [A4：事务属性导读](ARM_IHI_0022H_AMBA_AXI_and_ACE_Protocol_Specification_A4.md) | 覆盖 A4 全章：AxCACHE、内存类型、缓冲、AxPROT 与 Device 写完成保证，含三幅教学图及自测 | 已完成 |
 
 ## 后续计划
 
@@ -35,13 +35,13 @@
 
 详细规则见 [README 翻译文档制作规范](README写作规范.md)。简要要求如下：
 
-1. 默认采用纯中文正文，只在关键规范句后附完全一致的英文原句；A1、A3 等明确要求全文双语的章节逐段保留完整英文原文。
+1. 默认采用逐段全文中英双语正文，中文段落或列表后紧跟完全一致的英文原文；只有用户明确指定时才采用“纯中文正文＋关键英文原句”的回退体例。
 2. 严格保持原文的小节、段落、Note、Caution、列表、公式、图表和脚注顺序，不遗漏、不合并、不提前或重新组织。
 3. 省略每页重复的页眉、页脚、版权行和物理页码；正文中的实质性交叉引用必须保留。
 4. 不主动增加学习目标、教学案例、额外时序图、易错点、总结、自测题、黄色高亮或其他原文不存在的内容。
 5. 信号名、字段名、接口名、编码和协议名称保留英文；重要协议名词首次出现时可以采用 `术语（terminology）` 形式括注英文，术语形式和规范强度必须保持一致。
-6. 包含 `must`、`must not`、`required`、`permitted`、`no requirement`、`deprecated`、`IMPLEMENTATION DEFINED` 或存在歧义的关键句必须附英文原句。
-7. 原文中的每张图和每个表都使用 draw.io 中文重绘，并放回原文对应位置；原文没有图表时不额外制作。
+6. 全文双语章节的英文原文块必须与 PDF 完全一致；回退体例中包含 `must`、`must not`、`required`、`permitted`、`no requirement`、`deprecated`、`IMPLEMENTATION DEFINED` 或存在歧义的关键句必须附英文原句。
+7. 原文中的每张图和每个表都使用 draw.io 重绘，并放回原文对应位置；全文双语章节的图表使用中英双语标签，原文没有图表时不额外制作。
 8. 重绘必须保留编号、标题、结构、行列、图例、标签、全部数据和脚注，不增加教学结论框。
 9. 每个图表同时保存同名 `.drawio` 和高清 PNG，默认导出宽度为 1440 像素；Markdown 只引用 PNG。
 10. 翻译前建立术语表和源内容清单，完成后按清单逐项核对数量、顺序和内容。
